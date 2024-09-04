@@ -5,6 +5,7 @@ from util import *
 from os.path import join as pjoin
 from scipy.stats import sobol_indices, uniform, norm, lognorm
 from plotting_base import *
+import itertools
 
 PARALLEL = 0
 
@@ -55,11 +56,7 @@ if PARALLEL:
         return i
 
 
-def model(x):
-    out = {}
-    out["y0"] = x["x0"]**2 + np.exp(x["x1"]) + x['x3']
-    out["y1"] = x["x0"] + x["x1"] + x["x2"] + x["x3"]
-    return out
+
 
 
 def check_input_valid(base_inputs, add_inputs):
@@ -658,11 +655,17 @@ def run_analysis(model, input_stack, n_samples=2000, analyses=None, par_sensitiv
 
 
     # return outputs and output_stats if available in dict
-    return {'outputs': outputs, 'output_stats': output_stats}
+    return
     
     
 
 if __name__ == "__main__":
+
+    def model(x):
+        out = {}
+        out["y0"] = x["x0"]**2 + np.exp(x["x1"]) + x['x3']
+        out["y1"] = x["x0"] + x["x1"] + x["x2"] + x["x3"]
+        return out
 
     input_stack = {"x0": 1, "x1": 2, "x2": 3., "x3": 4, 'x4': 'a'}
 
