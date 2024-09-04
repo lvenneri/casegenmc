@@ -2,14 +2,13 @@ from setuptools import setup, find_packages
 
 setup(
     name='casegen-mc',
-    version='0.1.0',
+    version='0.1.01',
     packages=find_packages(),
     install_requires=[
         'numpy',
         'pandas',
         'scikit',
         'matplotlib',
-    
 
     ],
     author='lvenneri',
