@@ -16,7 +16,7 @@ jobs:
     environment:
       name: pypi
       url: https://pypi.org/p/casegenmc
-      permissions:
+    permissions:
         id-token: write
 
     steps:
