@@ -511,7 +511,7 @@ def run_analysis(model, input_stack, n_samples=2000, analyses=None, par_sensitiv
     analyses : list of str, optional
         List of analyses to perform. If None, all analyses will be skipped.
         Possible values:
-            "single_estimate": Runs the model with the mean values of the input parameters.
+            "estimate": Runs the model with the mean values of the input parameters.
             "estimate_with_unc": Runs the model with sampled input parameters based on their uncertainty distributions.
             "estimate_with_unc_combos": Runs the model with combinations of extreme values of the input parameters.
             "sensitivity_analysis_unc": Performs sensitivity analysis by varying each parameter individually based on its uncertainty distribution.
@@ -667,12 +667,6 @@ if __name__ == "__main__":
         out["y1"] = x["x0"] + x["x1"] + x["x2"] + x["x3"]
         return out
 
-    input_stack = {"x0": 1, "x1": 2, "x2": 3., "x3": 4, 'x4': 'a'}
-
-    # unc is 1 sigma for unc, and used for unc_type = normal
-    # range is for evals, defaults to 3 sigma, and is used for uniform
-    # bound is for optimization
-
     # Dictionary specifying variables with uncertainties
     # mean, unc, unc_range (tolerance or 3 sigma), bounds (minimum and maximum value)
     input_stack = {
@@ -681,7 +675,6 @@ if __name__ == "__main__":
         "x2": 3., "x3": 4, 'x4': 'a',
         "x5": {"mean": "a",  'range': ["a", "b"], "options": ["a", "b", "c"], "unc_type": "choice", },
         "x6": {"mean": "a",   "options": ["a", "b", "c"], "unc_type": "choice", },
-
     }
 
     input_stack = process_input_stack(input_stack)
@@ -726,9 +719,9 @@ if __name__ == "__main__":
         print("BOUNDS", BOUNDS)
 
     # run each analysis
-    # run_analysis(model=model, input_stack=input_stack, n_samples=1000, analyses=["estimate"],  par_output="y0")
-    # run_analysis(model, input_stack, n_samples=1000, analyses=["estimate_with_unc"], par_sensitivity=["x0", "x1"], par_grid_xy=["x0", "x1"], par_output="y0")
-    # run_analysis(model, input_stack, n_samples=1000, analyses=["estimate_with_unc_combos"], par_sensitivity=["x0", "x1"], par_grid_xy=["x0", "x1"], par_output="y0")
+    run_analysis(model=model, input_stack=input_stack, analyses=["estimate"],  )
+    # run_analysis(model, input_stack, n_samples=1000, analyses=["estimate_with_unc"], par_output="y0")
+    # run_analysis(model, input_stack, n_samples=1000, analyses=["estimate_with_unc_combos"],  par_output="y0")
 
     # run_analysis(model, input_stack, n_samples=1000, analyses=["sensitivity_analysis_unc"], par_sensitivity=["x0", "x1"], par_grid_xy=["x0", "x1"], par_output="y0")
     # run_analysis(model, input_stack, n_samples=1000, analyses=["sensitivity_analysis_range"], par_sensitivity=["x0", "x1"], par_grid_xy=["x0", "x1"], par_output="y0")
@@ -736,7 +729,7 @@ if __name__ == "__main__":
     # run_analysis(model, input_stack, n_samples=1000, analyses=["sensitivity_analysis_2D"],  par_grid_xy=["x0", "x1"], par_output="y0")
     # run_analysis(model, input_stack, n_samples=1000,
     #              analyses=["regular_grid"],  par_output="y0")
-    run_analysis(model, input_stack, n_samples=1000, analyses=["random_uniform_grid"], par_output="y0")
+    # run_analysis(model, input_stack, n_samples=1000, analyses=["random_uniform_grid"], par_output="y0")
 
     # run_analysis(model, input_stack, n_samples=1000, analyses=["GA"], par_sensitivity=["x0", "x1"], par_grid_xy=["x0", "x1"], par_output="y0")
     # run_analysis(model, input_stack, n_samples=1000, analyses=["population_rankings"], par_sensitivity=["x0", "x1"], par_grid_xy=["x0", "x1"], par_output="y0")
