@@ -220,31 +220,32 @@ def run_cases(inputs, model, output_stats=False, parallel=PARALLEL):
 
     # combine with cases
     outputs = pd.concat([inputs, outputs], axis=1)
-    output_stats = {}
+    out_stats = None
     
     # if output_stats, create a summary dic calculate mean, std, min, max, and std_fractional for each output
     if output_stats:
+        out_stats = {}
+
         for output in outputs.columns:
-
-            output_stats[output] = {}
+            out_stats[output] = {}
             if pd.api.types.is_numeric_dtype(outputs[output]):
-                output_stats[output]["mean"] = outputs[output].mean()
-                output_stats[output]["std"] = outputs[output].std()
-                output_stats[output]["std_frac"] = outputs[output].std(
-                ) / output_stats[output]["mean"]
-                output_stats[output]["min"] = outputs[output].min()
-                output_stats[output]["max"] = outputs[output].max()
-                output_stats[output]["frac_minus"] = (
-                    output_stats[output]["min"] - output_stats[output]["mean"]) / output_stats[output]["mean"]
-                output_stats[output]["frac_plus"] = (
-                    output_stats[output]["max"] - output_stats[output]["mean"]) / output_stats[output]["mean"]
+                out_stats[output]["mean"] = outputs[output].mean()
+                out_stats[output]["std"] = outputs[output].std()
+                out_stats[output]["std_frac"] = outputs[output].std(
+                ) / out_stats[output]["mean"]
+                out_stats[output]["min"] = outputs[output].min()
+                out_stats[output]["max"] = outputs[output].max()
+                out_stats[output]["frac_minus"] = (
+                    out_stats[output]["min"] - out_stats[output]["mean"]) / out_stats[output]["mean"]
+                out_stats[output]["frac_plus"] = (
+                    out_stats[output]["max"] - out_stats[output]["mean"]) / out_stats[output]["mean"]
             else:
-                output_stats[output]["mode"] = outputs[output].mode()[0]
+                out_stats[output]["mode"] = outputs[output].mode()[0]
 
-        output_stats = pd.DataFrame.from_dict(output_stats).T
+        out_stats = pd.DataFrame.from_dict(out_stats).T
 
-        return outputs, output_stats
-    return outputs
+
+    return {'out':outputs,  'out_stats':out_stats}
 
 
 def generate_combos(par_space, type="dict"):
@@ -496,7 +497,7 @@ def generate_samples(par_space0, type="unc", n=1000, par_to_sample=None,
     return df_samples
 
 
-def run_analysis(model, input_stack, n_samples=2000, analyses=None, par_sensitivity=None, par_grid_xy=None, par_output="y0", par_opt="y0", data_folder="data"):
+def run_analysis(model, input_stack, n_samples=2000, analyses=None, par_sensitivity=None, par_grid_xy=None, par_output="y0", par_opt="y0", data_folder="analysis", plotting=True):
     """
     Run various analyses on the model based on the input stack.
 
@@ -529,13 +530,16 @@ def run_analysis(model, input_stack, n_samples=2000, analyses=None, par_sensitiv
     par_output : str, optional
         Output variable to analyze. Default is "y0".
     par_opt : str, optional
-        Key to use optimization.
+        Key to use for optimization.
     data_folder : str, optional
-        Folder to save analysis outputs. Default is "data".
+        Folder to save analysis outputs. Default is "analysis".
+    plotting : bool, optional
+        Whether to generate plots for the analyses. Default is False.
 
-    Returns
+    Returns 
     -------
-    None
+    if only a single analysis is run, returns the outputs and output stats. 
+    otherwise returns None.
     """
 
     fixed_inputs = {k: v["mean"] for k, v in input_stack.items()
@@ -545,76 +549,82 @@ def run_analysis(model, input_stack, n_samples=2000, analyses=None, par_sensitiv
 
     if analyses is None:
         analyses = []
+    elif not isinstance(analyses, list):
+        analyses = [analyses]
 
-    if "estimate" in analyses:
-        cases = [{k: v["mean"] for k, v in input_stack.items()}]
-        outputs = run_cases(cases, model)
-        create_dir(os.path.join(data_folder, "estimate"))
-        outputs.to_csv(os.path.join(data_folder, "estimate", "outputs.csv"), index=False)
+    # straight estimate.
+    cases = [{k: v["mean"] for k, v in input_stack.items()}]
+    res_0 = run_cases(cases, model)
+    create_dir(os.path.join(data_folder, "estimate"))
+    res_0['out'].to_csv(os.path.join(data_folder, "estimate", "outputs.csv"), index=False)
 
     if "estimate_with_unc" in analyses:
         cases = generate_samples(input_stack, n=n_samples, type="unc")
-        outputs, output_stats = run_cases(cases, model, output_stats=True)
+        res = run_cases(cases, model, output_stats=True)
+        print(res)
         create_dir(os.path.join(data_folder, "estimate_with_unc"))
-        outputs.to_csv(os.path.join(data_folder, "estimate_with_unc", "outputs.csv"), index=False)
-        output_stats.to_csv(os.path.join(data_folder, "estimate_with_unc", "output_stats.csv"), index=False)
-        basic_plot_set(df=outputs,
-                       par=list(variable_inputs.keys()),
-                       parz=par_output, data_folder=os.path.join(data_folder, "estimate_with_unc"))
+        res['out'].to_csv(os.path.join(data_folder, "estimate_with_unc", "outputs.csv"), index=False)
+        res['out_stats'].to_csv(os.path.join(data_folder, "estimate_with_unc", "output_stats.csv"), index=False)
+        if plotting:
+            basic_plot_set(df=res['out'],
+                           par=list(variable_inputs.keys()),
+                           parz=par_output, data_folder=os.path.join(data_folder, "estimate_with_unc"))
 
     if "estimate_with_unc_combos" in analyses:
         cases = generate_samples(input_stack, n=n_samples, type="extremes")
-        outputs, output_stats = run_cases(cases, model, output_stats=True)
+        res = run_cases(cases, model, output_stats=True)
         create_dir(os.path.join(data_folder, "estimate_with_unc_combos"))
-        outputs.to_csv(os.path.join(data_folder, "estimate_with_unc_combos", "outputs.csv"), index=False)
-        output_stats.to_csv(os.path.join(data_folder, "estimate_with_unc_combos", "output_stats.csv"), index=False)
+        res['out'].to_csv(os.path.join(data_folder, "estimate_with_unc_combos", "outputs.csv"), index=False)
+        res['out_stats'].to_csv(os.path.join(data_folder, "estimate_with_unc_combos", "output_stats.csv"), index=False)
 
     if "sensitivity_analysis_unc" in analyses:
         for par_i in par_sensitivity:
             cases = generate_samples(
                 input_stack, n=n_samples, type="unc", par_to_sample=par_i)
-            outputs, output_stats = run_cases(
+            res = run_cases(
                 cases, model, output_stats=True)
             create_dir(os.path.join(data_folder, f"sensitivity_analysis_unc_{par_i}"))
-            outputs.to_csv(os.path.join(data_folder, f"sensitivity_analysis_unc_{par_i}", "outputs.csv"), index=False)
-            output_stats.to_csv(os.path.join(data_folder, f"sensitivity_analysis_unc_{par_i}", "output_stats.csv"), index=False)
+            res['out'].to_csv(os.path.join(data_folder, f"sensitivity_analysis_unc_{par_i}", "outputs.csv"), index=False)
+            res['out_stats'].to_csv(os.path.join(data_folder, f"sensitivity_analysis_unc_{par_i}", "output_stats.csv"), index=False)
 
     if "sensitivity_analysis_range" in analyses:
         for par_i in par_sensitivity:
             cases = generate_samples(
                 input_stack, n=n_samples, type="grid", par_to_sample=par_i)
-            outputs, output_stats = run_cases(
+            res = run_cases(
                 cases, model, output_stats=True)
             create_dir(os.path.join(data_folder, f"sensitivity_analysis_range_{par_i}"))
-            outputs.to_csv(os.path.join(data_folder, f"sensitivity_analysis_range_{par_i}", "outputs.csv"), index=False)
-            output_stats.to_csv(os.path.join(data_folder, f"sensitivity_analysis_range_{par_i}", "output_stats.csv"), index=False)
-            print(output_stats)
+            res['out'].to_csv(os.path.join(data_folder, f"sensitivity_analysis_range_{par_i}", "outputs.csv"), index=False)
+            res['out_stats'].to_csv(os.path.join(data_folder, f"sensitivity_analysis_range_{par_i}", "output_stats.csv"), index=False)
 
     if "sensitivity_analysis_2D" in analyses:
         cases = generate_samples(
             input_stack, n=n_samples, type="grid", par_to_sample=par_grid_xy)
 
-        outputs, output_stats = run_cases(cases, model, output_stats=True)
+        res = run_cases(cases, model, output_stats=True)
         create_dir(os.path.join(data_folder, "sensitivity_analysis_2D"))
-        outputs.to_csv(os.path.join(data_folder, "sensitivity_analysis_2D", "outputs.csv"), index=False)
-        output_stats.to_csv(os.path.join(data_folder, "sensitivity_analysis_2D", "output_stats.csv"), index=False)
-        basic_plot_set(df=outputs,
-                       par=list(par_grid_xy),
-                       parz=par_output, data_folder=os.path.join(data_folder, "sensitivity_analysis_2D"))
+        res['out'].to_csv(os.path.join(data_folder, "sensitivity_analysis_2D", "outputs.csv"), index=False)
+        res['out_stats'].to_csv(os.path.join(data_folder, "sensitivity_analysis_2D", "output_stats.csv"), index=False)
+        if plotting:
+            basic_plot_set(df=res['out'],
+                           par=list(par_grid_xy),
+                           parz=par_output, data_folder=os.path.join(data_folder, "sensitivity_analysis_2D"))
 
     if "regular_grid" in analyses:
         cases = generate_samples(input_stack, n=n_samples, type="grid")
-        outputs = run_cases(cases, model)
+        res = run_cases(cases, model)
         create_dir(os.path.join(data_folder, "regular_grid"))
-        outputs.to_csv(os.path.join(data_folder, "regular_grid", "outputs.csv"), index=False)
-        basic_plot_set(df=outputs, par=list(input_stack.keys()), parz=par_output, data_folder=os.path.join(data_folder, "regular_grid"))
+        res['out'].to_csv(os.path.join(data_folder, "regular_grid", "outputs.csv"), index=False)
+        if plotting:
+            basic_plot_set(df=res['out'], par=list(input_stack.keys()), parz=par_output, data_folder=os.path.join(data_folder, "regular_grid"))
 
     if "random_uniform_grid" in analyses:
         cases = generate_samples(input_stack, n=n_samples, type="uniform")
-        outputs = run_cases(cases, model)
+        res = run_cases(cases, model)
         create_dir(os.path.join(data_folder, "random_uniform_grid"))
-        outputs.to_csv(os.path.join(data_folder, "random_uniform_grid", "outputs.csv"), index=False)
-        basic_plot_set(df=outputs, par=list(input_stack.keys()), parz=par_output, data_folder=os.path.join(data_folder, "random_uniform_grid"))
+        res['out'].to_csv(os.path.join(data_folder, "random_uniform_grid", "outputs.csv"), index=False)
+        if plotting:
+            basic_plot_set(df=res['out'], par=list(input_stack.keys()), parz=par_output, data_folder=os.path.join(data_folder, "random_uniform_grid"))
 
 
     if "GA" in analyses:
@@ -653,9 +663,11 @@ def run_analysis(model, input_stack, n_samples=2000, analyses=None, par_sensitiv
 
         print(indices)
 
+        if len(analyses) == 1:
+            res['out_no_unc'] = res_0['out']
+            return res
 
-    # return outputs and output_stats if available in dict
-    return
+    return res_0
     
     
 
@@ -675,6 +687,8 @@ if __name__ == "__main__":
         "x2": 3., "x3": 4, 'x4': 'a',
         "x5": {"mean": "a",  'range': ["a", "b"], "options": ["a", "b", "c"], "unc_type": "choice", },
         "x6": {"mean": "a",   "options": ["a", "b", "c"], "unc_type": "choice", },
+        "x7": {"mean": "a", 'unc':[.2,.8] ,'range': ["a", "b"], "options": ["a", "b", "c"], "unc_type": "choice", },
+
     }
 
     input_stack = process_input_stack(input_stack)
@@ -719,8 +733,8 @@ if __name__ == "__main__":
         print("BOUNDS", BOUNDS)
 
     # run each analysis
-    run_analysis(model=model, input_stack=input_stack, analyses=["estimate"],  )
-    # run_analysis(model, input_stack, n_samples=1000, analyses=["estimate_with_unc"], par_output="y0")
+    # run_analysis(model=model, input_stack=input_stack, analyses=["estimate"],  )
+    run_analysis(model, input_stack, n_samples=1000, analyses=["estimate_with_unc"], par_output="y0")
     # run_analysis(model, input_stack, n_samples=1000, analyses=["estimate_with_unc_combos"],  par_output="y0")
 
     # run_analysis(model, input_stack, n_samples=1000, analyses=["sensitivity_analysis_unc"], par_sensitivity=["x0", "x1"], par_grid_xy=["x0", "x1"], par_output="y0")

@@ -1,9 +1,8 @@
 # CASEGEN MC
 
+Probe a model to see the possibilities. Takes model and input dictionary and evaluates cases to explore the model space using grids, random sampling, and optimization techniques.
 
-Probe a model and see the possibilities. Takes model and input dictionary and evaluates cases to explore the model space using grids, random sampling, and optimization techniques.
-
-The input dictionary is defined by the user with mean value, uncertainty, uncertainty distribution, range, and bounds. Sparse definition okay and assumes 0 unc and range by default. Numerical and categorical parameters are supported.
+The input dictionary is defined by the user with mean value, uncertainty, uncertainty distribution, range, and bounds. Sparse definition okay and assumes 0 unc and range by default. Numerical and categorical parameters are supported. For categorical parameters, the range is defined as a list of options (subset of options), and the uncertainty distribution is defined as "choice" with unc defining the probability of each option. If no unc is defined, it is assumed to be uniform.
 
 Includes matplotlib utility functions for standard plotting.
 
@@ -45,6 +44,7 @@ input_stack = {
     "x2": 3., 
     "x3": 4, 
     "x4": {"mean": "a",  'range': ["a", "b"], "options": ["a", "b", "c"], "unc_type": "choice", },
+    "x5": {"mean": "a", 'unc':[.2,.8], 'range': ["a", "b"], "options": ["a", "b", "c"], "unc_type": "choice", },
     }
 
 # Pre-process input stack
