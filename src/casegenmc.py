@@ -7,53 +7,69 @@ from scipy.stats import sobol_indices, uniform, norm, lognorm
 from plotting_base import *
 import itertools
 
-PARALLEL = 0
+from tex_plots import setup_tex_plots
 
-if PARALLEL:
-    import ray
+PARALLEL = False
+def init_casegenmc(parallel=False, setup_tex=False, texfonts=True, fontsize=8, figsize=(6,6)):
+    global PARALLEL
+    PARALLEL = parallel
 
-    ray.init()
 
-    @ray.remote
-    class FileWriter:
-        def __init__(self, file_name):
-            self.file_name = file_name
-            self.header_written = False
+    if setup_tex:
+        try:
+            setup_tex_plots(texfonts=texfonts, fontsize=fontsize, figsize=figsize)
+        except:
+            print("tex fonts not found, skipping")
+    if fontsize:
+        plt.rcParams.update({'font.size': fontsize})
+    if figsize:
+        plt.rcParams.update({'figure.figsize': figsize})
 
-        def write(self, row):
-            if isinstance(row, dict):
-                row = pd.DataFrame([row])
-            with open(self.file_name, "a") as f:
-                if not self.header_written:
-                    row.to_csv(f, index=True)
-                    self.header_written = True
-                else:
-                    # row_vals = row.loc[["v"], :]
-                    row.to_csv(f, header=False, index=True)
+    if PARALLEL:
+        import ray
+        ray.init()
 
-    @ray.remote
-    def run_inputP(i, case, model, writer=None):
-        """
-        Wroker function for parallel processing. This function is called by the ray library.
+        @ray.remote
+        class FileWriter:
+            def __init__(self, file_name):
+                self.file_name = file_name
+                self.header_written = False
 
-        :param i:
-        :param input_dict:
-        :param data_out_dir:
-        :param save_all_dfs:
-        :param save_figs:
-        :param writer:
-        :return:
-        """
+            def write(self, row):
+                if isinstance(row, dict):
+                    row = pd.DataFrame([row])
+                with open(self.file_name, "a") as f:
+                    if not self.header_written:
+                        row.to_csv(f, index=True)
+                        self.header_written = True
+                    else:
+                        # row_vals = row.loc[["v"], :]
+                        row.to_csv(f, header=False, index=True)
 
-        i = model(case)
-        ray.get(writer.write.remote(i))
-        return i
+        @ray.remote
+        def run_inputP(i, case, model, writer=None):
+            """
+            Worker function for parallel processing. This function is called by the ray library.
 
-    @timer
-    def run_inputS(i, case, model, writer=None):
-        i = model(case)
-        writer.write.remote(i)
-        return i
+            :param i:
+            :param input_dict:
+            :param data_out_dir:
+            :param save_all_dfs:
+            :param save_figs:
+            :param writer:
+            :return:
+            """
+
+            i = model(case)
+            ray.get(writer.write.remote(i))
+            return i
+
+        @timer
+        def run_inputS(i, case, model, writer=None):
+            i = model(case)
+            writer.write.remote(i)
+            return i
+
 
 
 

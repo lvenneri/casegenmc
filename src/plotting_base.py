@@ -10,11 +10,8 @@ import scipy
 import plotly.graph_objects as go
 from jinja2 import Template
 from plotting_util import generate_xticks
-
 from tex_plots import *
 
-# setup_tex_plots(texfonts=True,fontsize=8,figsize=[3.25,3.25])
-setup_tex_plots(texfonts=True, fontsize=8, figsize=[6, 6])
 
 
 def str_latex(s):
