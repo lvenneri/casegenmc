@@ -1,12 +1,12 @@
 
-def create_neorl_function_dictIO(ff, value_key, input_key, fixed_inputs):
+def create_NEORL_funwrap(ff, value_key, variable_inputs, fixed_inputs):
     """
     Creates a function compatible with NEORL optimization package.
 
     Parameters:
     - ff: The original function to be optimized, which accepts a dictionary of parameters.
     - value_key: The key in the output dictionary of ff that is the output value to be returned.
-    - input_key: A list of names for the variable inputs, corresponding to the order in the array `x`.
+    - variable_inputs: A list of names for the variable inputs, corresponding to the order in the array `x`.
     - fixed_inputs: Keyword arguments representing the fixed parameters for ff.
 
     Returns:
@@ -16,7 +16,7 @@ def create_neorl_function_dictIO(ff, value_key, input_key, fixed_inputs):
   
         # Map the variable inputs array to the corresponding input names
         variable_inputs = {name: x[i]
-                           for i, name in enumerate(input_key)}
+                           for i, name in enumerate(variable_inputs)}
 
         # Merge variable and fixed inputs
         all_inputs = {**variable_inputs, **fixed_inputs}

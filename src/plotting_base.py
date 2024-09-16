@@ -13,7 +13,6 @@ from plotting_util import generate_xticks
 from tex_plots import *
 
 
-
 def str_latex(s):
     latex_replacements = {
         '&': r'\&',
@@ -722,7 +721,7 @@ def sensitivity1d(data_folder, par=[], parz='Energy System LCOE', file_name="sum
             "slope": slope_at_xref_rel}
 
 
-def basic_plot_set(df, par, parz, data_folder):
+def basic_plot_set(df, par, parz, data_folder,df0=None):
     """
     Standard routine for plotting outputs from population of designs.
 
@@ -736,11 +735,35 @@ def basic_plot_set(df, par, parz, data_folder):
     # change the parz str so that latex can be used
     parz_str = parz.replace("_", " ").replace("/", " per ")
     bins = max(min(25, len(df) // 20), 20)  # adaptive bin
+    if 1==1:
+        fig, ax = histall(df, parz, bins=bins, edgecolor='black',
+                        linewidth=1, histtype="step")
+        # Add vertical lines for the mean and median
+        mean_val = df[parz].mean()
+        median_val = df[parz].median()
+        # Add vertical lines for the mean, median, and reference point
+        ax.axvline(mean_val, color='red', linestyle='-', linewidth=1, ymax=0.3)
+        ax.text(mean_val, ax.get_ylim()[1]*0.32, 'Mean', rotation=90, color='red', fontsize=7, ha='center', va='bottom')
 
-    fig, ax = histall(df, parz, bins=bins, edgecolor='black',
-                      linewidth=1, histtype="step")
-    fig.savefig(pjoin(data_folder, "hist{0}.png".format(
-        parz_str)), bbox_inches='tight')
+        ax.axvline(median_val, color='blue', linestyle='-', linewidth=1, ymax=0.1)
+        ax.text(median_val, ax.get_ylim()[1]*0.12, 'Median', rotation=90, color='blue', fontsize=7, ha='center', va='bottom')
+
+        if df0 is not None:
+            ax.axvline(df0[parz][0], color='green', linestyle='-', linewidth=1, ymax=0.5)
+            ax.text(df0[parz][0], ax.get_ylim()[1]*0.52, 'Ref', rotation=90, color='green', fontsize=7, ha='center', va='bottom')
+        # Add a text box in the top right summarizing statistics
+        stats_text = f'Mean: {roundSF(mean_val, 3)}\nMedian: {roundSF(df[parz].median(), 3)}\n' \
+                    f'Mode: {roundSF(df[parz].mode()[0], 3)}\nStd: {roundSF(df[parz].std(), 3)}\n' \
+                    f'Skew: {roundSF(df[parz].skew(), 3)}\nKurtosis: {roundSF(df[parz].kurtosis(), 3)}\n' \
+                    f'N: {len(df)}'
+
+        if df0 is not None:
+            stats_text = f"Ref: {roundSF(df0[parz][0], 3)} \n" + stats_text
+
+        ax.text(0.98, 0.98, stats_text, transform=ax.transAxes, fontsize=8, 
+                va='top', ha='right', bbox=dict(facecolor='white', alpha=0.8))
+        fig.savefig(pjoin(data_folder, "hist{0}.png".format(
+            parz_str)), bbox_inches='tight')
 
     if len(par) == 1:
         fig, ax = plot(df, par[0], parz, c="k", marker="o", linewidth=1)
@@ -760,7 +783,7 @@ def basic_plot_set(df, par, parz, data_folder):
 
         for p in par:
             par_str = p.replace("/", "_per_")
-            print(p, parz)
+            # print(p, parz)
             fig, ax = stacked_hist(df, parz, p, num_bins=bins, zmax=100)
             fig.savefig(pjoin(data_folder, "hist_stacked_{0}_{1}.png".format(
                 parz_str, par_str)), bbox_inches='tight')

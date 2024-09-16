@@ -150,7 +150,6 @@ def get_directory_above_file(f):
     return directory_above
 
 
-
 def dfn_dec(func):
     """
     Decorator added to OMEGA14 functions
@@ -265,6 +264,24 @@ def create_dir(folder):
         os.makedirs(folder)
         print("overwriting directory: " + folder)
     return
+
+
+def df_to_dict(df,x):
+    """
+
+    Add a dataframe df to a dictionary x with the index_col as the key and the entries as the values.
+
+    Parameters:
+    df (pandas.DataFrame): The dataframe to be added to the dictionary.
+    x (dict): The dictionary to add the dataframe entries to.
+
+    Returns:
+    dict: The updated dictionary with the dataframe entries added.
+    """
+    for index, row in df.to_dict(orient='index').items():
+        for col, value in row.items():
+            x[f"{index}_{col}"] = value
+    return x
 
 
 if __name__ == "__main__":
