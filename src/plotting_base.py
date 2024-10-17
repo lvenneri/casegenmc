@@ -13,30 +13,6 @@ from plotting_util import generate_xticks
 from tex_plots import *
 
 
-def str_latex(s):
-    latex_replacements = {
-        '&': r'\&',
-        '_': r'\_',
-        '%': r'\%',
-        '#': r'\#',
-        '$': r'\$',
-        '{': r'\{',
-        '}': r'\}',
-        '^': r'\^',
-        '~': r'\~',
-        '<': r'\<',
-        '>': r'\>',
-        '|': r'\|',
-        ' ': r'\ ',
-        '\n': r'\n'
-    }
-
-    for char, replacement in latex_replacements.items():
-        s = s.replace(char, replacement)
-
-    return s
-
-
 def par2_contours(df, x_name, y_name, z_names, zero_lvl="value", **kwargs):
     """
     Plot contours of a 2D parameter space. The first element must be the reference point.
@@ -234,6 +210,8 @@ def histall(df, x, group_by=None, **kwargs):
 
         # color each histogram based on the group_unq
         colors = plt.cm.jet(np.linspace(0, 1, len(group_unq)))
+        colors = [tuple(color) for color in colors]
+
         for i, group in enumerate(group_unq):
             df_selection = df[df[group_by] == group]
             ax.hist(df_selection[x].values, histtype="step",
@@ -302,8 +280,12 @@ def scatterGroupedColor(df, x, y, group_by=None, logx=True, logy=True, pareto=Tr
 
         if len(group_unq) > 10:
             colors = plt.cm.jet(np.linspace(0, 1, len(group_unq)))
+            colors = [tuple(color) for color in colors]
+
         elif len(group_unq) > 5:
             colors = plt.cm.tab10(np.linspace(0, 1, len(group_unq)))
+            colors = [tuple(color) for color in colors]
+
         elif len(group_unq) <= 3:
             colors = ["r", "b", "g"]
 
@@ -380,6 +362,8 @@ def stacked_hist(data0, numeric_variable, category_variable, num_bins=100, multi
         colors = plt.cm.tab20(np.linspace(0, 1, len(grouped_data)))
     else:
         colors = plt.cm.plasma(np.linspace(0, 1, len(grouped_data)))
+        
+    colors = [tuple(color) for color in colors]
 
     # Create a list of unique categories
 
@@ -733,6 +717,7 @@ def basic_plot_set(df, par, parz, data_folder,df0=None):
     """
 
     # change the parz str so that latex can be used
+    
     parz_str = parz.replace("_", " ").replace("/", " per ")
     bins = max(min(25, len(df) // 20), 20)  # adaptive bin
     if 1==1:

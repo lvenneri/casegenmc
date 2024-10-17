@@ -1,7 +1,5 @@
 import re
-
 import numpy as np
-
 
 def setup_tex_plots(fontsize=12, usetex=True, style='default',texfonts=True,figsize=[8.0, 8.0]):
     """
@@ -29,7 +27,8 @@ def setup_tex_plots(fontsize=12, usetex=True, style='default',texfonts=True,figs
 
     matplotlib.rc('font', size=fontsize, family='serif',
                   style='normal', variant='normal',
-                  stretch='normal', weight='normal')
+                  stretch='normal', weight='normal',
+                  serif=['Computer Modern'])
 
     # default scatter plot marker size
     matplotlib.rcParams['lines.markersize'] = 5
@@ -58,26 +57,29 @@ def setup_tex_plots(fontsize=12, usetex=True, style='default',texfonts=True,figs
 
 def str_latex(s):
     latex_replacements = {
-        '&': r'\&',
-        '_': r'\_',
-        '%': r'\%',
-        '#': r'\#',
-        '$': r'\$',
-        '{': r'\{',
-        '}': r'\}',
-        '^': r'\^',
-        '~': r'\~',
-        '<': r'\<',
-        '>': r'\>',
-        '|': r'\|',
-        # ' ': r'\ ',
-        # '\n': r'\n'
+        "&": r"\&",
+        "_": r"\_",
+        "%": r"\%",
+        "#": r"\#",
+        "$": r"\$",
+        "{": r"\{",
+        "}": r"\}",
+        "^": r"\^",
+        "~": r"\~",
+        "<": r"\<",
+        ">": r"\>",
+        "|": r"\|",
+        " ": r"\ ",
+        "\n": r"\n",
     }
 
-    for char, replacement in latex_replacements.items():
-        s = s.replace(char, replacement)
+    if True:
+        for char, replacement in latex_replacements.items():
+            s = s.replace(char, replacement)
 
     return s
+
+
 def set_latex_labels(ax, xlabel=None, ylabel=None, title=None):
     if xlabel:
         ax.set_xlabel(str_latex(xlabel))
@@ -98,5 +100,3 @@ def latex_sci_notation(numbers, sig_figs=2):
         return _latex_sci_notation(numbers, sig_figs)
     else:
         return [_latex_sci_notation(n, sig_figs) for n in numbers]
-
-

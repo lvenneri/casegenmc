@@ -3,16 +3,15 @@ import pandas as pd
 from util import *
 from os.path import join as pjoin
 from scipy.stats import uniform, norm, lognorm
+from tqdm import tqdm
 
 # from scipy.stats import sobol_indices
 
 from plotting_base import *
 import itertools
-
-from tex_plots import setup_tex_plots
+import tex_plots 
 
 PARALLEL = False
-
 
 def init_casegenmc(
     parallel=False, setup_tex=False, texfonts=True, fontsize=8, figsize=(6, 6)
@@ -20,11 +19,14 @@ def init_casegenmc(
     global PARALLEL
     PARALLEL = parallel
 
+    tex_plots.TEX_PLOTS = setup_tex
+
     if setup_tex:
         try:
-            setup_tex_plots(texfonts=texfonts, fontsize=fontsize, figsize=figsize)
+            tex_plots.setup_tex_plots(texfonts=texfonts, fontsize=fontsize, figsize=figsize)
         except:
             print("tex fonts not found, skipping")
+
     if fontsize:
         plt.rcParams.update({"font.size": fontsize})
     if figsize:
@@ -32,6 +34,7 @@ def init_casegenmc(
 
     if PARALLEL:
         import ray
+        print("PARALLEL")
 
         ray.init()
 
@@ -145,7 +148,7 @@ def process_input_stack(input_stack, default_unc_type="normal", default_unc_frac
 
         if isinstance(value, dict):
 
-            if "options" in value:
+            if "options" in value or isinstance(value["mean"],str):
                 if "unc_type" not in value:
                     value["unc_type"] = "choice"
                 elif value["unc_type"] != "choice":
@@ -160,12 +163,15 @@ def process_input_stack(input_stack, default_unc_type="normal", default_unc_frac
                         value["range"] = value["options"]
                 else:
                     value["range"] = [value["mean"]] # so no choice
-                    
+
                 # check that range is in options
                 if not all(v in value["options"] for v in value["range"]):
                     raise ValueError(
                         f"Range {value['range']} is not in options {value['options']} for key '{key}'"
                     )
+
+                if "options" not in value:
+                    value["options"] = [value["mean"]]
 
                 if "prob" in value:
                     if not (len(value["options"]) == len(value["prob"])):
@@ -188,9 +194,11 @@ def process_input_stack(input_stack, default_unc_type="normal", default_unc_frac
                     value["unc_frac"] = default_unc_frac
 
                 if "range" not in value:
+                    umag = value["unc_frac"] * value["mean"] if "unc_frac" in value else value["unc"]
+
                     value["range"] = [
-                        value["mean"] - 3 * value["unc"],
-                        value["mean"] + 3 * value["unc"],
+                        value["mean"] - 3 * umag,
+                        value["mean"] + 3 * umag,
                     ]
                 else:
 
@@ -264,8 +272,10 @@ def run_cases(inputs, model, output_stats=False, parallel=PARALLEL):
 
             print(ray.get(futures))
     else:
+        
         for i, case in inputs.iterrows():
             outputs[i] = model(case)
+            
     end_time = time.time()
     if 1==0:
         print("inputs count", len(inputs))
@@ -274,8 +284,9 @@ def run_cases(inputs, model, output_stats=False, parallel=PARALLEL):
 
     outputs = pd.DataFrame.from_dict(outputs).T
 
-    # combine with cases
+    # combine with cases, but avoid duplicate columns
     outputs = pd.concat([inputs, outputs], axis=1)
+    outputs = outputs.loc[:,~outputs.columns.duplicated()]
     out_stats = None
 
     # if output_stats, create a summary dic calculate mean, std, min, max, and std_fractional for each output
@@ -567,18 +578,21 @@ def generate_samples(par_space0, type="unc", n=1000, par_to_sample=None, grid_n=
 
 
 def run_analysis(
-    model,
-    input_stack,
-    n_samples=2000,
-    analyses=None,
-    par_sensitivity=None,
-    par_grid_xy=None,
-    par_output="y0",
-    par_opt="y0",
-    data_folder="analysis",
-    plotting=False,
-    save_results=False,
-):
+        model: object,
+        input_stack: object,
+        n_samples: object = 2000,
+        analyses: object = None,
+        par_sensitivity: object = None,
+        par_sensitivity_range: object = None,
+        par_grid_xy: object = None,
+        par_output: object = "y0",
+        par_opt: object = "y0",
+        data_folder: object = "analysis",
+        plotting: object = False,
+        save_results: object = False,
+        x_range: object = None,
+        y_range: object = None,
+) -> object:
     """
     Run various analyses on the model based on the input stack.
 
@@ -601,9 +615,11 @@ def run_analysis(
             "sensitivity_analysis_2D": Performs 2D sensitivity analysis by varying two parameters simultaneously over a grid.
             "regular_grid": Runs the model over a regular grid of input parameter values.
             "random_uniform_grid": Runs the model over a grid of randomly sampled input parameter values.
-            
+
     par_sensitivity : list of str, optional
         List of parameters to perform sensitivity analysis on. If None, no sensitivity analysis will be performed.
+    par_sensitivity_range : list of str, optional
+        List of tupples with min and max for each parameter to perform sensitivity analysis on. can be none.
     par_grid_xy : list of str, optional
         List of parameters to perform 2D grid analysis on. If None, no 2D grid analysis will be performed.
     par_output : str, optional
@@ -620,7 +636,6 @@ def run_analysis(
     if only a single analysis is run, returns the outputs and output stats.
     otherwise returns None.
     """
- 
 
     fixed_inputs = {
         k: v["mean"] for k, v in input_stack.items() if len(v["range"]) == 1
@@ -629,8 +644,23 @@ def run_analysis(
 
     if analyses is None:
         analyses = []
-    elif not isinstance(analyses, list):
+    elif isinstance(analyses, str):
         analyses = [analyses]
+    else:
+        # Check that all provided analyses are valid
+        valid_analyses = [
+            "estimate",
+            "estimate_unc",
+            "estimate_unc_extreme_combos",
+            "sensitivity_analysis_unc",
+            "sensitivity_analysis_range",
+            "sensitivity_analysis_2D",
+            "regular_grid",
+            "random_uniform_grid",
+        ]
+        for analysis in analyses:
+            if analysis not in valid_analyses:
+                raise ValueError(f"Unknown analysis type: {analysis}")
 
     # straight estimate.
     cases = [{k: v["mean"] for k, v in input_stack.items()}]
@@ -660,7 +690,7 @@ def run_analysis(
 
             basic_plot_set(
                 df=res["out"],
-                par=list(variable_inputs.keys()),
+                par=[],
                 parz=par_output,
                 data_folder=os.path.join(data_folder, "estimate_unc"),
                 df0=res_0["out"],
@@ -687,41 +717,61 @@ def run_analysis(
                 input_stack, n=n_samples, type="unc", par_to_sample=par_i
             )
             res = run_cases(cases, model, output_stats=True)
-            create_dir(os.path.join(data_folder, f"sensitivity_analysis_unc_{par_i}"))
-            res["out"].to_csv(
-                os.path.join(
-                    data_folder, f"sensitivity_analysis_unc_{par_i}", "outputs.csv"
-                ),
-                index=False,
-            )
-            res["out_stats"].to_csv(
-                os.path.join(
-                    data_folder, f"sensitivity_analysis_unc_{par_i}", "output_stats.csv"
-                ),
-                index=False,
-            )
+            if save_results:
+                d_ifolder = os.path.join(data_folder, f"sensitivity_analysis_unc_{par_i}")
+                create_dir(d_ifolder)
+                res["out"].to_csv(
+                    os.path.join(d_ifolder, "outputs.csv"),
+                    index=False,
+                )
+                res["out_stats"].to_csv(
+                    os.path.join(d_ifolder, "output_stats.csv"),
+                    index=False,
+                )
+            if plotting:
+
+                basic_plot_set(
+                    df=res["out"],
+                    par=[par_i],
+                    parz=par_output,
+                    data_folder=d_ifolder,
+                    df0=res_0["out"],
+                )
 
     if "sensitivity_analysis_range" in analyses:
-        for par_i in par_sensitivity:
+        for i, par_i in enumerate(par_sensitivity):
+            if par_sensitivity_range is not None:
+                # hot swaps the range with the min max values
+                input_stack[par_i]["range"][0] = par_sensitivity_range[i][0]
+                input_stack[par_i]["range"][1] = par_sensitivity_range[i][1]
+                
             cases = generate_samples(
                 input_stack, n=n_samples, type="grid", par_to_sample=par_i
             )
             res = run_cases(cases, model, output_stats=True)
-            create_dir(os.path.join(data_folder, f"sensitivity_analysis_range_{par_i}"))
-            res["out"].to_csv(
-                os.path.join(
-                    data_folder, f"sensitivity_analysis_range_{par_i}", "outputs.csv"
-                ),
-                index=False,
-            )
-            res["out_stats"].to_csv(
-                os.path.join(
-                    data_folder,
-                    f"sensitivity_analysis_range_{par_i}",
-                    "output_stats.csv",
-                ),
-                index=False,
-            )
+            d_ifolder = os.path.join(data_folder, f"sensitivity_analysis_range_{par_i}")
+            if save_results:
+                create_dir(d_ifolder)
+                res["out"].to_csv(
+                    os.path.join(d_ifolder, "outputs.csv"),
+                    index=False,
+                )
+                res["out_stats"].to_csv(
+                    os.path.join(
+                        d_ifolder,
+                        "output_stats.csv",
+                    ),
+                    index=False,
+                )
+
+            if plotting:
+                basic_plot_set(
+                    df=res["out"],
+                    par=[par_i],
+                    parz=par_output,
+                    data_folder=d_ifolder,
+                    df0=res_0["out"],
+                )
 
     if "sensitivity_analysis_2D" in analyses:
         cases = generate_samples(
@@ -990,41 +1040,43 @@ if __name__ == "__main__":
     res = run_analysis(
         model,
         input_stack,
-        n_samples=1000,
-        analyses=["estimate_unc_extreme_combos"],
+        n_samples=100,
+        analyses=["estimate_unc"],
         par_output="y0",
         plotting=True,
     )
 
     print(res)
+    if 1==0:
+        # Test model wraps
 
-    model_w_unc = create_model_wrap(
-        model,
-        input_stack=input_stack,
-        analysis="estimate_unc",
-        n_samples=1000,
-        lamda_w=1,
-        value_key="y0",
-    )
+        model_w_unc = create_model_wrap(
+            model,
+            input_stack=input_stack,
+            analysis="estimate_unc",
+            n_samples=1000,
+            lamda_w=1,
+            value_key="y0",
+        )
 
-    model_w_extremes = create_model_wrap(
-        model,
-        input_stack=input_stack,
-        analysis="estimate_unc_extreme_combos",
-        n_samples=100,
-        lamda_w=1,
-        value_key="y0",
-    )
+        model_w_extremes = create_model_wrap(
+            model,
+            input_stack=input_stack,
+            analysis="estimate_unc_extreme_combos",
+            n_samples=100,
+            lamda_w=1,
+            value_key="y0",
+        )
 
-    run_analysis(
-        model_w_unc,
-        input_stack,
-        n_samples=10000,
-        analyses=["sensitivity_analysis_2D"],
-        par_grid_xy=["x0", "x1"],
-        par_output="y0_sharpe",
-        plotting=True,
-    )
+        run_analysis(
+            model_w_unc,
+            input_stack,
+            n_samples=10000,
+            analyses=["sensitivity_analysis_2D"],
+            par_grid_xy=["x0", "x1"],
+            par_output="y0_sharpe",
+            plotting=True,
+        )
 
     # run_analysis(model, input_stack, n_samples=1000, analyses=["estimate_unc_extreme_combos"],  par_output="y0")
 

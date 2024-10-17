@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "casegenmc"
-version = "0.1.4"
+version = "0.1.5"
 description = "Case generator, optimizer, and summarizer for models."
 authors = [{name = "Lorenzo Venneri", email = "lorenzo.venneri@gmail.com"}]
 license = {file = "LICENSE"}
@@ -16,6 +16,9 @@ dependencies = [
     "matplotlib>=3.1.0",
     "scipy>=1.4.0",
     "plotly>=5.0.0",
+    "ray>=2.0.0",
+    "tqdm>=4.62.3",
+    
 ]
 classifiers = [
     "Programming Language :: Python :: 3.7",
