@@ -515,20 +515,18 @@ def generate_samples(par_space0, type="unc", n=1000, par_to_sample=None, grid_n=
 
     elif type == "grid" or type == "extremes":
         par_space_sets = {}
-
         if grid_n is None:
             # Estimate grid points for each parameter
             option_ns = [len(v["range"]) for v in par_space.values() if "options" in v]
             grid_ns = [v["grid_n"] for v in par_space.values() if "grid_n" in v]
-            grid_range_0 = [1 for v in par_space.values() if len(v["range"]) == 1]
+            
+            grid_range_0 = [1 for v in par_space.values() if len(v["range"]) == 1 and 'options' not in v]
 
             n_dimensions = len(par_space)
             n_dim_left = (
                 n_dimensions - len(option_ns) - len(grid_ns) - len(grid_range_0)
             )
-
             # no range dims
-
             grid_n = max(
                 2,
                 round(

@@ -15,18 +15,23 @@ basic_plot_set().
 
 mean: float or array_like
 Mean value of the parameter.
+
 unc: float or array_like, optional
 Standard deviation of the parameter. Only used if "unc_frac" is not defined.
+
 unc_frac: float or array_like, optional
 Fraction of the mean to use as the standard deviation. Only used if "unc" is not defined.
+
 range: float or array_like, optional
 Range of the parameter used for regular grid and random uniform grid. Will default to the mean +/- 3x the unc if not
 defined.
+
 bounds: float or array_like, optional
 Bounds of the parameter. Used for optimization. Will default to [0, 100x the mean] if not defined.
+
 unc_type: str, optional
-Type of uncertainty distribution. If not defined, it is assumed to be uniform. Options: normal, lognormal, choice,
-exponential. Can add more, but working with normals is convenient for now.
+Type of uncertainty distribution. If not defined, it is assumed to be uniform. Options: normal, lognormal, choice, exponential. Can add more, but working with normals is convenient for now.
+
 
 ## Analysis Types:
 
