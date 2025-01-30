@@ -164,6 +164,9 @@ def process_input_stack(input_stack, default_unc_type="normal", default_unc_frac
                 else:
                     value["range"] = [value["mean"]] # so no choice
 
+                if "options" not in value:
+                    value["options"] = value["mean"]
+
                 # check that range is in options
                 if not all(v in value["options"] for v in value["range"]):
                     raise ValueError(

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "casegenmc"
-version = "0.1.5"
+version = "0.1.6"
 description = "Case generator, optimizer, and summarizer for models."
 authors = [{name = "Lorenzo Venneri", email = "lorenzo.venneri@gmail.com"}]
 license = {file = "LICENSE"}
