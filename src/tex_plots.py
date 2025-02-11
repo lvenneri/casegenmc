@@ -1,6 +1,5 @@
 import re
 import shutil
-
 import numpy as np
 
 def setup_tex_plots(fontsize=12, usetex=True, style='default',texfonts=True,figsize=[8.0, 8.0]):

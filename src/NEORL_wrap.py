@@ -15,16 +15,14 @@ def create_NEORL_funwrap(ff, value_key, variable_inputs, fixed_inputs):
     def neorl_compatible_function(x):
   
         # Map the variable inputs array to the corresponding input names
-        variable_inputs = {name: x[i]
-                           for i, name in enumerate(variable_inputs)}
+        mapped_inputs = {name: x[i] for i, name in enumerate(variable_inputs)}
 
         # Merge variable and fixed inputs
-        all_inputs = {**variable_inputs, **fixed_inputs}
+        all_inputs = {**mapped_inputs, **fixed_inputs}
         # Call the original function ff with the merged inputs
         output = ff(all_inputs)
 
         # Assuming ff returns a dictionary, select a single output value to return
-        # Returns the first output value by default
         return output[value_key]
 
     return neorl_compatible_function
