@@ -662,6 +662,8 @@ def run_analysis(
         for analysis in analyses:
             if analysis not in valid_analyses:
                 raise ValueError(f"Unknown analysis type: {analysis}")
+    if type(par_output) is str:
+        par_output = [par_output]
 
     # straight estimate.
     cases = [{k: v["mean"] for k, v in input_stack.items()}]
@@ -692,7 +694,7 @@ def run_analysis(
             basic_plot_set(
                 df=res["out"],
                 par=[],
-                parz=par_output,
+                parz_list=par_output,
                 data_folder=os.path.join(data_folder, "estimate_unc"),
                 df0=res_0["out"],
             )
@@ -719,7 +721,7 @@ def run_analysis(
             )
             res = run_cases(cases, model, output_stats=True)
             if save_results:
-                d_ifolder = os.path.join(data_folder, f"sensitivity_analysis_unc_{par_i}")
+                d_ifolder = os.path.join(data_folder, f"sensitivity_analysis_unc_{clean_fld_name(par_i)}")
                 create_dir(d_ifolder)
                 res["out"].to_csv(
                     os.path.join(d_ifolder, "outputs.csv"),
@@ -734,7 +736,7 @@ def run_analysis(
                 basic_plot_set(
                     df=res["out"],
                     par=[par_i],
-                    parz=par_output,
+                    parz_list=par_output,
                     data_folder=d_ifolder,
                     df0=res_0["out"],
                 )
@@ -750,7 +752,7 @@ def run_analysis(
                 input_stack, n=n_samples, type="grid", par_to_sample=par_i
             )
             res = run_cases(cases, model, output_stats=True)
-            d_ifolder = os.path.join(data_folder, f"sensitivity_analysis_range_{par_i}")
+            d_ifolder = os.path.join(data_folder, f"sensitivity_analysis_range_{clean_fld_name(par_i)}")
             if save_results:
                 create_dir(d_ifolder)
                 res["out"].to_csv(
@@ -769,7 +771,7 @@ def run_analysis(
                 basic_plot_set(
                     df=res["out"],
                     par=[par_i],
-                    parz=par_output,
+                    parz_list=par_output,
                     data_folder=d_ifolder,
                     df0=res_0["out"],
                 )
@@ -794,7 +796,7 @@ def run_analysis(
             basic_plot_set(
                 df=res["out"],
                 par=list(par_grid_xy),
-                parz=par_output,
+                parz_list=par_output,
                 data_folder=os.path.join(data_folder, "sensitivity_analysis_2D"),
             )
 
@@ -809,7 +811,7 @@ def run_analysis(
             basic_plot_set(
                 df=res["out"],
                 par=list(input_stack.keys()),
-                parz=par_output,
+                parz_list=par_output,
                 data_folder=os.path.join(data_folder, "regular_grid"),
             )
 
@@ -824,7 +826,7 @@ def run_analysis(
             basic_plot_set(
                 df=res["out"],
                 par=list(input_stack.keys()),
-                parz=par_output,
+                parz_list=par_output,
                 data_folder=os.path.join(data_folder, "random_uniform_grid"),
             )
 

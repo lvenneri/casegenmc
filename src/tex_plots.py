@@ -1,4 +1,6 @@
 import re
+import shutil
+
 import numpy as np
 
 def setup_tex_plots(fontsize=12, usetex=True, style='default',texfonts=True,figsize=[8.0, 8.0]):
@@ -56,6 +58,8 @@ def setup_tex_plots(fontsize=12, usetex=True, style='default',texfonts=True,figs
 
 
 def str_latex(s):
+    if not shutil.which("latex"):
+        return s
     latex_replacements = {
         "&": r"\&",
         "_": r"\_",
@@ -72,13 +76,9 @@ def str_latex(s):
         " ": r"\ ",
         "\n": r"\n",
     }
-
-    if True:
-        for char, replacement in latex_replacements.items():
-            s = s.replace(char, replacement)
-
+    for char, replacement in latex_replacements.items():
+        s = s.replace(char, replacement)
     return s
-
 
 def set_latex_labels(ax, xlabel=None, ylabel=None, title=None):
     if xlabel:

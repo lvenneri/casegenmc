@@ -705,95 +705,206 @@ def sensitivity1d(data_folder, par=[], parz='Energy System LCOE', file_name="sum
             "slope": slope_at_xref_rel}
 
 
-def basic_plot_set(df, par, parz, data_folder,df0=None):
+def basic_plot_set(df, par, parz_list, data_folder, df0=None):
     """
-    Standard routine for plotting outputs from population of designs.
+    Standard routine for plotting outputs from population of designs,
+    now supporting multiple 'parz' variables in subplots for:
+      - histograms
+      - line plots (if len(par) == 1)
+      - scatter (if len(par) == 2 or len(par) > 3)
 
-    :param data_folder:
-    :param par: []
-    :param parz:
-    :param file_name:
-    :return:
+    HOWEVER: for the 2D contour plots (if len(par) == 2),
+    we revert back to the ORIGINAL (one figure per 'parz') code.
     """
 
-    # change the parz str so that latex can be used
-    
-    parz_str = parz.replace("_", " ").replace("/", " per ")
+    # -------------------------------
+    # 1) Histograms in subplots
+    # -------------------------------
     bins = max(min(25, len(df) // 20), 20)  # adaptive bin
-    if 1==1:
-        fig, ax = histall(df, parz, bins=bins, edgecolor='black',
-                        linewidth=1, histtype="step")
-        # Add vertical lines for the mean and median
-        mean_val = df[parz].mean()
-        median_val = df[parz].median()
-        # Add vertical lines for the mean, median, and reference point
+
+    fig, axes = plt.subplots(nrows=len(parz_list), ncols=1,
+                              sharex=False)
+    fig.subplots_adjust(hspace=0.0)
+
+    if len(parz_list) == 1:
+        axes = [axes]
+
+    for i, parz in enumerate(parz_list):
+        ax = axes[i]
+        data_vals = df[parz].dropna()
+        ax.hist(data_vals, bins=bins, edgecolor='black',
+                linewidth=1, histtype='step')
+
+        # Compute stats
+        mean_val   = data_vals.mean()
+        median_val = data_vals.median()
+        mode_vals  = data_vals.mode(dropna=True)
+        mode_val   = mode_vals[0] if len(mode_vals) else np.nan
+        std_val    = data_vals.std()
+        skew_val   = data_vals.skew()
+        kurt_val   = data_vals.kurtosis()
+
+        # Vertical lines for mean/median
         ax.axvline(mean_val, color='red', linestyle='-', linewidth=1, ymax=0.3)
-        ax.text(mean_val, ax.get_ylim()[1]*0.32, 'Mean', rotation=90, color='red', fontsize=7, ha='center', va='bottom')
+        ax.text(mean_val, ax.get_ylim()[1]*0.32, 'Mean', rotation=90,
+                color='red', fontsize=7, ha='center', va='bottom')
 
         ax.axvline(median_val, color='blue', linestyle='-', linewidth=1, ymax=0.1)
-        ax.text(median_val, ax.get_ylim()[1]*0.12, 'Median', rotation=90, color='blue', fontsize=7, ha='center', va='bottom')
+        ax.text(median_val, ax.get_ylim()[1]*0.12, 'Median', rotation=90,
+                color='blue', fontsize=7, ha='center', va='bottom')
 
-        if df0 is not None:
-            ax.axvline(df0[parz][0], color='green', linestyle='-', linewidth=1, ymax=0.5)
-            ax.text(df0[parz][0], ax.get_ylim()[1]*0.52, 'Ref', rotation=90, color='green', fontsize=7, ha='center', va='bottom')
-        # Add a text box in the top right summarizing statistics
-        stats_text = f'Mean: {roundSF(mean_val, 3)}\nMedian: {roundSF(df[parz].median(), 3)}\n' \
-                    f'Mode: {roundSF(df[parz].mode()[0], 3)}\nStd: {roundSF(df[parz].std(), 3)}\n' \
-                    f'Skew: {roundSF(df[parz].skew(), 3)}\nKurtosis: {roundSF(df[parz].kurtosis(), 3)}\n' \
-                    f'N: {len(df)}'
+        # Reference line
+        ref_text = ""
+        if df0 is not None and parz in df0.columns:
+            ref_val = df0[parz].iloc[0]
+            ax.axvline(ref_val, color='green', linestyle='-', linewidth=1, ymax=0.5)
+            ax.text(ref_val, ax.get_ylim()[1]*0.52, 'Ref', rotation=90,
+                    color='green', fontsize=7, ha='center', va='bottom')
+            ref_text = f"Ref: {round(ref_val, 3)}\n"
 
-        if df0 is not None:
-            stats_text = f"Ref: {roundSF(df0[parz][0], 3)} \n" + stats_text
+        # Stats text in upper-right
+        stats_text = (
+            f"{ref_text}"
+            f"Mean: {round(mean_val, 3)}\n"
+            f"Median: {round(median_val, 3)}\n"
+            f"Mode: {round(mode_val, 3)}\n"
+            f"Std: {round(std_val, 3)}\n"
+            f"Skew: {round(skew_val, 3)}\n"
+            f"Kurtosis: {round(kurt_val, 3)}\n"
+            f"N: {len(data_vals)}"
+        )
+        ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
+                fontsize=8, va='top', ha='right',
+                bbox=dict(facecolor='white', alpha=0.8, edgecolor='black'))
 
-        ax.text(0.98, 0.98, stats_text, transform=ax.transAxes, fontsize=8, 
-                va='top', ha='right', bbox=dict(facecolor='white', alpha=0.8))
-        fig.savefig(pjoin(data_folder, "hist{0}.png".format(
-            parz_str)), bbox_inches='tight')
+        # Small "title" in upper-left
+        ax.text(0.01, 0.99,
+                f"Histogram: {parz}",
+                transform=ax.transAxes,
+                fontsize=8,
+                va='top',
+                ha='left',
+                bbox=dict(facecolor='white', edgecolor='black', alpha=0.8))
 
+    fig.tight_layout()
+    fig.savefig(pjoin(data_folder, "hist_subplots.png"))
+    plt.close(fig)
+
+    # -------------------------------
+    # 2) Line plots in subplots if len(par) == 1
+    # -------------------------------
     if len(par) == 1:
-        fig, ax = plot(df, par[0], parz, c="k", marker="o", linewidth=1)
-        fig.savefig(pjoin(data_folder, "line{0}.png".format(parz_str)))
-    if len(par) == 2:
-        fig, ax = par2_contours(df, par[0], par[1], [parz], zero_lvl="0-ref")
-        fig.savefig(pjoin(data_folder, "contour{0}_ref_.png".format(
-            parz_str)), bbox_inches='tight')
-        fig, ax = par2_contours(df, par[0], par[1], [parz], zero_lvl="value")
-        fig.savefig(pjoin(data_folder, "contour{0}_value_.png".format(
-            parz_str)), bbox_inches='tight')
+        fig, axes = plt.subplots(nrows=len(parz_list), ncols=1,  sharex=False)
+        fig.subplots_adjust(hspace=0.0)
 
-    if len(par) > 2:
-        fig = parallel_coordinates_plot(
-            df, columnsToDisplay=par, colorBy=parz, log_color=True)
-        fig.write_html(pjoin(data_folder, "parallel{0}.html".format(parz_str)))
+        if len(parz_list) == 1:
+            axes = [axes]
 
-        for p in par:
-            par_str = p.replace("/", "_per_")
-            # print(p, parz)
-            fig, ax = stacked_hist(df, parz, p, num_bins=bins, zmax=100)
-            fig.savefig(pjoin(data_folder, "hist_stacked_{0}_{1}.png".format(
-                parz_str, par_str)), bbox_inches='tight')
-            plt.close("all")
+        for i, parz in enumerate(parz_list):
+            ax = axes[i]
+            ax.plot(df[par[0]][1:], df[parz][1:], 'ko-', linewidth=1, markersize=3)
+            # Mark the first point in red
+            ax.scatter(df[par[0]].iloc[0], df[parz].iloc[0],
+                       c='r', marker='*', s=40, zorder=5)
+            ax.set_xlabel(par[0])
+            # ax.set_ylabel(parz)
 
-    if len(par) == 2 or len(par) > 3:
+            # Small "title"
+            ax.text(0.01, 0.99,
+                    f"Line: {par[0]} vs {parz}",
+                    transform=ax.transAxes,
+                    fontsize=8,
+                    va='top',
+                    ha='left',
+                    bbox=dict(facecolor='white', edgecolor='black', alpha=0.8))
 
-        # make and save scatter plot of each par against parz and give it x and y labels, and a title
-        for p in par:
-            fig, ax = plt.subplots()
-            par_str = p.replace("/", "_per_")
-            ax.scatter(df[p], df[parz], s=.2, c='k', alpha=1)
+        # fig.tight_layout()
 
-            set_latex_labels(ax, str_latex(p), parz, '')
-            # plt.yscale("log")
-            # plt.xscale("log")
-            plt.savefig(
-                pjoin(data_folder, f"scatter{par_str}.png"), bbox_inches='tight')
-            plt.close(fig)
-
+        fig.savefig(pjoin(data_folder, "line_subplots.png"))
         plt.close(fig)
 
-    # close the figures
-    plt.close("all")
+    # -------------------------------
+    # 3) If len(par) == 2, revert to ORIGINAL 2D code
+    #    -> One figure per parz, for "0-ref" + "value"
+    # -------------------------------
+    if len(par) == 2:
+        for parz in parz_list:
+            # (Re-create the original string replacement for saving)
+            parz_str = parz.replace("_", " ").replace("/", " per ")
 
+            fig, ax = par2_contours(df, par[0], par[1], [parz], zero_lvl="0-ref")
+            fig.savefig(pjoin(data_folder, f"contour{parz_str}_ref_.png"),
+                        )
+
+            fig, ax = par2_contours(df, par[0], par[1], [parz], zero_lvl="value")
+            fig.savefig(pjoin(data_folder, f"contour{parz_str}_value_.png"),
+                        )
+
+    # -------------------------------
+    # 4) If len(par) > 2 => parallel coords & stacked hist
+    # -------------------------------
+    if len(par) > 2:
+        for parz in parz_list:
+            # Parallel coords
+            fig = parallel_coordinates_plot(
+                df, columnsToDisplay=par, colorBy=parz, log_color=True
+            )
+            fig.write_html(pjoin(data_folder, f"parallel_{parz}.html"))
+
+        # Stacked hist
+        for p in par:
+            for parz in parz_list:
+                fig, ax = stacked_hist(df, parz, p, num_bins=bins, zmax=100)
+                safe_parz = parz.replace("/", "_per_")
+                safe_p    = p.replace("/", "_per_")
+
+                # A small annotation if desired:
+                ax.text(0.01, 0.99,
+                        f"Stacked Hist: {safe_p} vs {safe_parz}",
+                        transform=ax.transAxes,
+                        fontsize=8, va='top', ha='left',
+                        bbox=dict(facecolor='white', edgecolor='black', alpha=0.8))
+
+                fig.savefig(pjoin(data_folder,
+                                  f"hist_stacked_{safe_parz}_{safe_p}.png"),
+                            )
+                plt.close(fig)
+
+    # -------------------------------
+    # 5) Scatter plots if len(par) == 2 or len(par) > 3
+    # -------------------------------
+    # (If you want to keep subplots for parz, do so here.)
+    if len(par) == 2 or len(par) > 3:
+        for p in par:
+            fig, axes = plt.subplots(nrows=len(parz_list), ncols=1,
+                                   )
+            fig.subplots_adjust(hspace=0.0)
+
+            if len(parz_list) == 1:
+                axes = [axes]
+
+            for i, parz in enumerate(parz_list):
+                ax = axes[i]
+                ax.scatter(df[p], df[parz], s=5, c='k', alpha=0.7)
+
+                ax.scatter(df[p][0], df[parz][0], marker='*', color='r', s=20)
+                ax.set_xlabel(p)
+                ax.set_ylabel(parz)
+
+                ax.text(0.01, 0.99,
+                        f"Scatter: {p} vs {parz}",
+                        transform=ax.transAxes,
+                        fontsize=8,
+                        va='top',
+                        ha='left',
+                        bbox=dict(facecolor='white', edgecolor='black', alpha=0.8))
+
+            safe_p = p.replace("/", "_per_")
+            fig.tight_layout()
+            fig.savefig(pjoin(data_folder, f"scatter_{safe_p}.png"))
+            plt.close(fig)
+
+    plt.close("all")
     return
 
 
