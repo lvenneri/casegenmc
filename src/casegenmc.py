@@ -455,7 +455,11 @@ def generate_samples(par_space0, type="unc", n=1000, par_to_sample=None, grid_n=
         Default is "unc".
     n : int, optional
         Number of samples to generate. Default is 1000. For grids n is the desired number of samples.
-
+    par_to_sample : list of str, optional
+        List of parameters to sample. If None, all parameters will be sampled.
+    grid_n : int, optional
+        Number of samples to generate for each parameter. If None, the number of samples is estimated based on the number of parameters and the desired number of samples.
+    
 
     Returns
     -------
@@ -464,6 +468,9 @@ def generate_samples(par_space0, type="unc", n=1000, par_to_sample=None, grid_n=
 
 
     """
+
+    if isinstance(par_to_sample, str):
+        par_to_sample = [par_to_sample]
 
     if par_to_sample is None:
         par_to_sample = par_space0.keys()
