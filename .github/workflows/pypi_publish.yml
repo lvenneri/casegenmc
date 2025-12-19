@@ -8,8 +8,8 @@ on:
     types: [published]
 
 permissions:
-  contents: write  # Required to commit the version bump back to the repo
-  id-token: write  # Required for PyPI publishing (if using OIDC) or general safety
+  contents: write  # Required for bumping version
+  id-token: write  # Required for OIDC/Trusted Publishing checks
 
 jobs:
   deploy:
@@ -19,7 +19,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        fetch-depth: 0 # Fetch all history for all tags and branches (good practice for versioning)
+        fetch-depth: 0
 
     - name: Set up Python
       uses: actions/setup-python@v3
@@ -32,14 +32,12 @@ jobs:
         pip install build bump2version
 
     - name: Configure Git
-      # Configures the bot user so it can make the commit
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
 
     - name: Bump version and push
-      # This step reads your .bumpversion.cfg, updates pyproject.toml,
-      # commits with "[skip ci]", and pushes the change.
+      # Bumps version, commits, and pushes back to repo
       run: |
         bump2version patch
         git push --follow-tags
@@ -47,9 +45,9 @@ jobs:
     - name: Build package
       run: python3 -m build
 
-    - name: Publish package to PyPI Test
+    - name: Publish package to PyPI (Production)
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         user: __token__
         password: ${{ secrets.PYPI_PASSWORD }}
-        repository_url: https://test.pypi.org/legacy/
+        # repository_url is removed, so it defaults to https://upload.pypi.org/legacy/
