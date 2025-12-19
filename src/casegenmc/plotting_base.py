@@ -5,12 +5,12 @@ import matplotlib.lines as mlines
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d, UnivariateSpline
-from util import *
+from casegenmc.util import *
 import scipy
 import plotly.graph_objects as go
 from jinja2 import Template
-from plotting_util import generate_xticks
-from tex_plots import *
+from casegenmc.plotting_util import generate_xticks
+from casegenmc.plotting_util import *
 
 
 def par2_contours(df, x_name, y_name, z_names, zero_lvl="value", **kwargs):

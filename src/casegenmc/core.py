@@ -1,15 +1,15 @@
 import numpy as np
 import pandas as pd
-from util import *
+from casegenmc.util import *
 from os.path import join as pjoin
 from scipy.stats import uniform, norm, lognorm
 from tqdm import tqdm
 
 # from scipy.stats import sobol_indices
 
-from plotting_base import *
+from casegenmc.plotting_base import *
 import itertools
-import tex_plots 
+import casegenmc.tex_plots as tex_plots 
 
 PARALLEL = False
 
