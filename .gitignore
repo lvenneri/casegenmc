@@ -5,6 +5,11 @@ __pycache__/
 .pypirc
 *neorl_ex/
 *scratch/
+.idea/
+.vscode/
+analysis/
+casegenmc.egg-info/
+tests/
 build/
 data/
 dev_s/
