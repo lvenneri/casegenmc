@@ -3,36 +3,53 @@ name: Upload Python Package
 on:
   push:
     branches:
-      - main  # Specify branches if needed; remove this line to run on pushes to all branches.
+      - main
   release:
     types: [published]
 
 permissions:
-  contents: read
+  contents: write  # Required to commit the version bump back to the repo
+  id-token: write  # Required for PyPI publishing (if using OIDC) or general safety
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-        id-token: write
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0 # Fetch all history for all tags and branches (good practice for versioning)
+
     - name: Set up Python
       uses: actions/setup-python@v3
       with:
         python-version: '3.x'
+
     - name: Install dependencies
       run: |
         python3 -m pip install --upgrade pip
-        pip install build
+        pip install build bump2version
+
+    - name: Configure Git
+      # Configures the bot user so it can make the commit
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: Bump version and push
+      # This step reads your .bumpversion.cfg, updates pyproject.toml,
+      # commits with "[skip ci]", and pushes the change.
+      run: |
+        bump2version patch
+        git push --follow-tags
+
     - name: Build package
       run: python3 -m build
+
     - name: Publish package to PyPI Test
-      uses: pypa/gh-action-pypi-publish@27b31702a0e7fc50959f5ad993c78deac1bdfc29
+      uses: pypa/gh-action-pypi-publish@release/v1
       with:
         user: __token__
         password: ${{ secrets.PYPI_PASSWORD }}
         repository_url: https://test.pypi.org/legacy/
-#        password: ${{ secrets.PYPI_API_TOKEN }}
-        # repository_url: https://test.pypi.org/legacy/
