@@ -1,4 +1,4 @@
-__version__ = "0.1.12"
+__version__ = "0.1.14"
 
 # Import and expose functions from wrapper modules
 from .NEORL_wrap import (
