@@ -1,51 +1,66 @@
+class NeorlWrapper:
+    """
+    A pickle-able wrapper class for NEORL optimization.
+    """
+
+    def __init__(self, ff, value_key, variable_inputs, fixed_inputs):
+        self.ff = ff
+        self.value_key = value_key
+        self.variable_inputs = variable_inputs
+        self.fixed_inputs = fixed_inputs
+
+    def __call__(self, x):
+        # 1. Map the list 'x' (from NEORL) to the variable names
+        mapped_inputs = {name: x[i] for i, name in enumerate(self.variable_inputs)}
+
+        # 2. Merge with fixed inputs
+        all_inputs = {**mapped_inputs, **self.fixed_inputs}
+
+        # 3. Call the original function
+        output = self.ff(all_inputs)
+
+        # 4. Return the specific fitness value
+        return output[self.value_key]
+
 
 def create_NEORL_funwrap(ff, value_key, variable_inputs, fixed_inputs):
     """
-    Creates a function compatible with NEORL optimization package.
-
-    Parameters:
-    - ff: The original function to be optimized, which accepts a dictionary of parameters.
-    - value_key: The key in the output dictionary of ff that is the output value to be returned.
-    - variable_inputs: A list of names for the variable inputs, corresponding to the order in the array `x`.
-    - fixed_inputs: Keyword arguments representing the fixed parameters for ff.
-
-    Returns:
-    - A function that accepts an array `x` of variable parameters and returns a single output.
+    Factory function to create the NeorlWrapper instance.
     """
-    def neorl_compatible_function(x):
-  
-        # Map the variable inputs array to the corresponding input names
-        mapped_inputs = {name: x[i] for i, name in enumerate(variable_inputs)}
-
-        # Merge variable and fixed inputs
-        all_inputs = {**mapped_inputs, **fixed_inputs}
-        # Call the original function ff with the merged inputs
-        output = ff(all_inputs)
-
-        # Assuming ff returns a dictionary, select a single output value to return
-        return output[value_key]
-
-    return neorl_compatible_function
-
+    return NeorlWrapper(ff, value_key, variable_inputs, fixed_inputs)
 
 
 def NEORL_getbounds(input_stack):
+    """
+    Generates the bounds dictionary required by NEORL (x1, x2, ...).
+    """
     i_B = 1
-
     BOUNDS = {}
 
     for key, value in input_stack.items():
-
-        # BOUNDS['x'+str(i_B)] = ['float', lb, ub]
         if isinstance(value, dict):
 
+            # Case A: Categorical / Grid
             if "options" in value:
-                
-                BOUNDS['x'+str(i_B)] = ['grid', tuple(input_stack[key]['options'])]
-            else:
+                BOUNDS['x' + str(i_B)] = ['grid', tuple(value['options'])]
 
-                BOUNDS['x'+str(i_B)] = [input_stack[key]['type'], input_stack[key]
-                                        ['bounds'][0], input_stack[key]['bounds'][1]]
+            # Case B: Continuous (Float/Int)
+            else:
+                # Determine type (default to float)
+                var_type = value.get('type', 'float')
+
+                # specific handling for min/max vs bounds vs range
+                if 'bounds' in value:
+                    lb, ub = value['bounds'][0], value['bounds'][1]
+                elif 'range' in value:
+                    lb, ub = value['range'][0], value['range'][1]
+                elif 'min' in value and 'max' in value:
+                    lb, ub = value['min'], value['max']
+                else:
+                    raise ValueError(f"Variable '{key}' needs 'bounds', 'range', or 'min'/'max'.")
+
+                BOUNDS['x' + str(i_B)] = [var_type, lb, ub]
+
             i_B += 1
 
     return BOUNDS

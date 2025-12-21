@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 import numpy as np
 import pandas as pd
+from matplotlib.offsetbox import AnchoredText
+from matplotlib.patches import Rectangle
 from scipy.interpolate import interp1d, UnivariateSpline
 from casegenmc.util import *
 import scipy
@@ -11,7 +13,7 @@ import plotly.graph_objects as go
 from jinja2 import Template
 from casegenmc.plotting_util import generate_xticks
 from casegenmc.plotting_util import *
-
+from casegenmc.tex_plots import str_latex, set_latex_labels
 
 def par2_contours(df, x_name, y_name, z_names, zero_lvl="value", **kwargs):
     """
@@ -716,76 +718,64 @@ def basic_plot_set(df, par, parz_list, data_folder, df0=None):
     HOWEVER: for the 2D contour plots (if len(par) == 2),
     we revert back to the ORIGINAL (one figure per 'parz') code.
     """
+    box_props = dict(facecolor='white', alpha=0.8, edgecolor='black')
 
     # -------------------------------
     # 1) Histograms in subplots
     # -------------------------------
     bins = max(min(25, len(df) // 20), 20)  # adaptive bin
 
-    fig, axes = plt.subplots(nrows=len(parz_list), ncols=1,
-                              sharex=False)
+    fig, axes = plt.subplots(nrows=len(parz_list), ncols=1, sharex=False)
     fig.subplots_adjust(hspace=0.0)
+    if len(parz_list) == 1: axes = [axes]
 
-    if len(parz_list) == 1:
-        axes = [axes]
+    # Define style once for consistency
 
     for i, parz in enumerate(parz_list):
         ax = axes[i]
         data_vals = df[parz].dropna()
-        ax.hist(data_vals, bins=bins, edgecolor='black',
-                linewidth=1, histtype='step')
+        ax.hist(data_vals, bins=bins, edgecolor='black', linewidth=1, histtype='step')
 
-        # Compute stats
-        mean_val   = data_vals.mean()
-        median_val = data_vals.median()
-        mode_vals  = data_vals.mode(dropna=True)
-        mode_val   = mode_vals[0] if len(mode_vals) else np.nan
-        std_val    = data_vals.std()
-        skew_val   = data_vals.skew()
-        kurt_val   = data_vals.kurtosis()
+        # Stats Calculations
+        mean_val, median_val = data_vals.mean(), data_vals.median()
+        mode_vals = data_vals.mode(dropna=True)
+        mode_val = mode_vals[0] if len(mode_vals) else np.nan
+        std_val, skew_val, kurt_val = data_vals.std(), data_vals.skew(), data_vals.kurtosis()
 
-        # Vertical lines for mean/median
-        ax.axvline(mean_val, color='red', linestyle='-', linewidth=1, ymax=0.3)
-        ax.text(mean_val, ax.get_ylim()[1]*0.32, 'Mean', rotation=90,
-                color='red', fontsize=7, ha='center', va='bottom')
+        # Lines
+        ax.axvline(mean_val, color='red', lw=1, ymax=0.3)
+        ax.text(mean_val, ax.get_ylim()[1] * 0.32, 'Mean', rotation=90, color='red', fontsize=7, ha='center',
+                va='bottom')
+        ax.axvline(median_val, color='blue', lw=1, ymax=0.1)
+        ax.text(median_val, ax.get_ylim()[1] * 0.12, 'Median', rotation=90, color='blue', fontsize=7, ha='center',
+                va='bottom')
 
-        ax.axvline(median_val, color='blue', linestyle='-', linewidth=1, ymax=0.1)
-        ax.text(median_val, ax.get_ylim()[1]*0.12, 'Median', rotation=90,
-                color='blue', fontsize=7, ha='center', va='bottom')
-
-        # Reference line
         ref_text = ""
         if df0 is not None and parz in df0.columns:
             ref_val = df0[parz].iloc[0]
-            ax.axvline(ref_val, color='green', linestyle='-', linewidth=1, ymax=0.5)
-            ax.text(ref_val, ax.get_ylim()[1]*0.52, 'Ref', rotation=90,
-                    color='green', fontsize=7, ha='center', va='bottom')
+            ax.axvline(ref_val, color='green', lw=1, ymax=0.5)
+            ax.text(ref_val, ax.get_ylim()[1] * 0.52, 'Ref', rotation=90, color='green', fontsize=7, ha='center',
+                    va='bottom')
             ref_text = f"Ref: {round(ref_val, 3)}\n"
 
-        # Stats text in upper-right
+        # Stats Box (Outside Right, Flush Top/Left)
+        # x=1.0 puts left edge of box at right spine. y=1.0 puts top of box at top spine.
         stats_text = (
-            f"{ref_text}"
-            f"Mean: {round(mean_val, 3)}\n"
-            f"Median: {round(median_val, 3)}\n"
-            f"Mode: {round(mode_val, 3)}\n"
-            f"Std: {round(std_val, 3)}\n"
-            f"Skew: {round(skew_val, 3)}\n"
-            f"Kurtosis: {round(kurt_val, 3)}\n"
-            f"N: {len(data_vals)}"
+            f"{ref_text}Mean: {mean_val:.3f}\nMedian: {median_val:.3f}\n"
+            f"Modeff: {mode_val:.3f}\nStd: {std_val:.3f}\n"
+            f"Skew: {skew_val:.3f}\nKurtosis: {kurt_val:.3f}\nN: {len(data_vals)}"
         )
-        ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
-                fontsize=8, va='top', ha='right',
-                bbox=dict(facecolor='white', alpha=0.8, edgecolor='black'))
-
-        # Small "title" in upper-left
-        ax.text(0.01, 0.99,
-                f"Histogram: {parz}",
-                transform=ax.transAxes,
-                fontsize=8,
-                va='top',
-                ha='left',
-                bbox=dict(facecolor='white', edgecolor='black', alpha=0.8))
-
+        dummy_handle = Rectangle((0, 0), 1, 1, visible=False)
+        ax.legend([dummy_handle], [stats_text],
+                  loc='upper left', bbox_to_anchor=(1, 1),
+                  borderaxespad=0, frameon=True,
+                  handlelength=0, handletextpad=0,
+                  prop={'size': 8})
+        at = AnchoredText(f"Histogram: {parz}", loc='upper left',
+                          prop=dict(fontsize=8), frameon=True, pad=0.4, borderpad=0.0)
+        at.patch.set(**box_props)  # Apply your styling (white/alpha/edge)
+        ax.add_artist(at)
+    # rect helps tight_layout account for the text outside the axes (the stats box)
     fig.tight_layout()
     fig.savefig(pjoin(data_folder, "hist_subplots.png"))
     plt.close(fig)
@@ -810,13 +800,10 @@ def basic_plot_set(df, par, parz_list, data_folder, df0=None):
             # ax.set_ylabel(parz)
 
             # Small "title"
-            ax.text(0.01, 0.99,
-                    f"Line: {par[0]} vs {parz}",
-                    transform=ax.transAxes,
-                    fontsize=8,
-                    va='top',
-                    ha='left',
-                    bbox=dict(facecolor='white', edgecolor='black', alpha=0.8))
+            at = AnchoredText(  f"Line: {par[0]} vs {parz}", loc='upper left', transform=ax.transAxes,
+                              prop=dict(fontsize=8), frameon=True, pad=0.4, borderpad=0.0)
+            at.patch.set(**box_props)  # Apply your styling (white/alpha/edge)
+            ax.add_artist(at)
 
         # fig.tight_layout()
 
@@ -858,12 +845,11 @@ def basic_plot_set(df, par, parz_list, data_folder, df0=None):
                 safe_parz = parz.replace("/", "_per_")
                 safe_p    = p.replace("/", "_per_")
 
-                # A small annotation if desired:
-                ax.text(0.01, 0.99,
-                        f"Stacked Hist: {safe_p} vs {safe_parz}",
-                        transform=ax.transAxes,
-                        fontsize=8, va='top', ha='left',
-                        bbox=dict(facecolor='white', edgecolor='black', alpha=0.8))
+
+                at = AnchoredText(f"Stacked Hist: {safe_p} vs {safe_parz}", loc='upper left', transform=ax.transAxes,
+                                  prop=dict(fontsize=8), frameon=True, pad=0.4, borderpad=0.0)
+                at.patch.set(**box_props)  # Apply your styling (white/alpha/edge)
+                ax.add_artist(at)
 
                 fig.savefig(pjoin(data_folder,
                                   f"hist_stacked_{safe_parz}_{safe_p}.png"),
@@ -891,13 +877,8 @@ def basic_plot_set(df, par, parz_list, data_folder, df0=None):
                 ax.set_xlabel(p)
                 ax.set_ylabel(parz)
 
-                ax.text(0.01, 0.99,
-                        f"Scatter: {p} vs {parz}",
-                        transform=ax.transAxes,
-                        fontsize=8,
-                        va='top',
-                        ha='left',
-                        bbox=dict(facecolor='white', edgecolor='black', alpha=0.8))
+                at = AnchoredText(f"Scatter: {p} vs {parz}", loc='upper left', transform=ax.transAxes,
+                                  prop=dict(fontsize=8), frameon=True, pad=0.4, borderpad=0.0)
 
             safe_p = p.replace("/", "_per_")
             fig.tight_layout()
