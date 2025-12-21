@@ -11,3 +11,5 @@ from .wrap_optimizers import (
     create_NEORL_funwrap,
 
 )
+
+from .discretization_error import est_discretization_err
