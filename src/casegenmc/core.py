@@ -1,8 +1,10 @@
+import copy
+
 import numpy as np
 import pandas as pd
-from casegenmc.util import *
+from casegenmc.util import timer, clean_fld_name
 from os.path import join as pjoin
-from scipy.stats import uniform, norm, lognorm
+from scipy.stats import uniform, norm, lognorm, sobol_indices
 from tqdm import tqdm
 
 # from scipy.stats import sobol_indices
@@ -13,11 +15,14 @@ import casegenmc.tex_plots as tex_plots
 
 PARALLEL = False
 
-def init_casegenmc(
-    parallel=False, setup_tex=False, texfonts=True, fontsize=8, figsize=(6, 6)
+try:
+    import ray
+except ImportError:
+    ray = None  # Flag that Ray is not available
+
+def init_casegenmc( setup_tex=False, texfonts=True, fontsize=8, figsize=(6, 6)
 ):
-    global PARALLEL
-    PARALLEL = parallel
+
 
     tex_plots.TEX_PLOTS = setup_tex
 
@@ -32,52 +37,6 @@ def init_casegenmc(
     if figsize:
         plt.rcParams.update({"figure.figsize": figsize})
 
-    if PARALLEL:
-        import ray
-        print("PARALLEL")
-
-        ray.init()
-
-        @ray.remote
-        class FileWriter:
-            def __init__(self, file_name):
-                self.file_name = file_name
-                self.header_written = False
-
-            def write(self, row):
-                if isinstance(row, dict):
-                    row = pd.DataFrame([row])
-                with open(self.file_name, "a") as f:
-                    if not self.header_written:
-                        row.to_csv(f, index=True)
-                        self.header_written = True
-                    else:
-                        # row_vals = row.loc[["v"], :]
-                        row.to_csv(f, header=False, index=True)
-
-        @ray.remote
-        def run_inputP(i, case, model, writer=None):
-            """
-            Worker function for parallel processing. This function is called by the ray library.
-
-            :param i:
-            :param input_dict:
-            :param data_out_dir:
-            :param save_all_dfs:
-            :param save_figs:
-            :param writer:
-            :return:
-            """
-
-            i = model(case)
-            ray.get(writer.write.remote(i))
-            return i
-
-        @timer
-        def run_inputS(i, case, model, writer=None):
-            i = model(case)
-            writer.write.remote(i)
-            return i
 
 
 def check_input_valid(base_inputs, add_inputs):
@@ -115,7 +74,7 @@ def check_input_valid(base_inputs, add_inputs):
     return
 
 
-def process_input_stack(input_stack, default_unc_type="normal", default_unc_frac=0):
+def process_input_stack(input_stack0, default_unc_type="normal", default_unc_frac=0):
     """
     Processes the input stack to ensure all parameters are correctly formatted for analysis.
 
@@ -133,7 +92,7 @@ def process_input_stack(input_stack, default_unc_type="normal", default_unc_frac
     Returns:
     - dict: The processed input stack with all parameters correctly formatted as dictionaries.
     """
-
+    input_stack = copy.deepcopy(input_stack0)
     for key, value in input_stack.items():
         if isinstance(value, (int, float, str, bool)):
             input_stack[key] = {
@@ -246,89 +205,145 @@ def process_input_stack(input_stack, default_unc_type="normal", default_unc_frac
     return input_stack
 
 
-def run_cases(inputs, model, output_stats=False, parallel=PARALLEL):
-    """ """
+def worker_task(index, case, model):
+    """
+    Standard function that returns a tuple: (index, result_dict).
+    """
+    return index, model(case)
+
+
+def run_cases(inputs, model, output_stats=False, parallel=False, num_cpus=None, batch_size=None):
+    """
+    Robust run_cases that works even if Ray is not installed.
+    """
     data_out_dir = "./data"
-    create_dir_safe(data_out_dir)
-    # time this operation
+    if not os.path.exists(data_out_dir):
+        os.makedirs(data_out_dir)
+
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    output_file = pjoin(data_out_dir, f"outputs_{timestamp}.csv")
+
     start_time = time.time()
 
-    outputs = {}
-
-    if isinstance(inputs, list):
-        inputs = pd.DataFrame(inputs)
-
-    if parallel:
-        file_name_summary = pjoin(data_out_dir, "summary.csv")
-        with open(file_name_summary, "w") as f:
-            pass
-        writer = FileWriter.remote(file_name_summary)
-
-        if not parallel:  # run in series
-            for i, case in inputs.iterrows():
-                outputs[i] = run_inputS(i, case, model, writer)
-
-        else:  # run in parallel
-            # Launch four parallel square tasks.
-            for i, case in inputs.iterrows():
-                futures = run_inputP.remote(i, case, model, writer)
-
-            print(ray.get(futures))
+    # Normalize inputs
+    if isinstance(inputs, pd.DataFrame):
+        cases_list = inputs.to_dict('records')
+        inputs_df = inputs.copy().reset_index(drop=True)
+    elif isinstance(inputs, list):
+        cases_list = inputs
+        inputs_df = pd.DataFrame(inputs)
     else:
-        
-        for i, case in inputs.iterrows():
-            outputs[i] = model(case)
-            
-    end_time = time.time()
-    if 1==0:
-        print("inputs count", len(inputs))
-        print("--- %s seconds per run---" % ((end_time - start_time) / len(inputs)))
-        print("--- %s seconds ---" % (end_time - start_time))
+        raise ValueError("Inputs must be a list of dicts or a pandas DataFrame.")
 
-    outputs = pd.DataFrame.from_dict(outputs).T
+    # --- 3. Parallel Logic Check ---
+    if parallel:
+        if ray is None:
+            print("WARNING: 'parallel=True' requested but 'ray' is not installed.")
+            print("Falling back to serial execution.")
+            parallel = False
+        else:
+            # Ray is available, proceed with setup
+            if not ray.is_initialized():
+                ray.init(num_cpus=num_cpus)
 
-    # combine with cases, but avoid duplicate columns
-    outputs = pd.concat([inputs, outputs], axis=1)
-    outputs = outputs.loc[:,~outputs.columns.duplicated()]
-    out_stats = None
+            # --- DYNAMIC REMOTING ---
+            # We convert the plain python function to a Ray remote function strictly at runtime
+            remote_worker = ray.remote(worker_task)
 
-    # if output_stats, create a summary dic calculate mean, std, min, max, and std_fractional for each output
+            print(f"Launching {len(cases_list)} tasks on {num_cpus if num_cpus else 'all'} cores...")
+
+            # Use the dynamic 'remote_worker' instead of the function name directly
+            futures = [remote_worker.remote(i, case, model) for i, case in enumerate(cases_list)]
+
+            if batch_size is None:
+                batch_size = len(cases_list)
+
+            header_written = False
+
+            # Batch Loop
+            while futures:
+                done_futures, futures = ray.wait(futures, num_returns=min(batch_size, len(futures)))
+                batch_results = ray.get(done_futures)
+
+                batch_rows = []
+                for idx, res in batch_results:
+                    input_row = inputs_df.iloc[[idx]].to_dict('records')[0]
+                    batch_rows.append({**input_row, **res})
+
+                batch_df = pd.DataFrame(batch_rows)
+                mode = 'a' if header_written else 'w'
+                header = not header_written
+                batch_df.to_csv(output_file, mode=mode, header=header, index=False)
+                header_written = True
+
+                print(f"Batch processed: {len(batch_rows)} items written.")
+                del batch_results, batch_df, batch_rows
+
+    # --- 4. Serial Fallback ---
+    # This runs if parallel=False OR if Ray was missing
+    if not parallel:
+        print("Running in serial mode...")
+        # We can still use batch writing in serial to save memory
+        header_written = False
+        buffer = []
+        eff_batch_size = batch_size if batch_size else 1000  # Default buffer for serial
+
+        for i, case in enumerate(cases_list):
+            # Run the plain function directly
+            _, res = worker_task(i, case, model)
+
+            input_row = inputs_df.iloc[[i]].to_dict('records')[0]
+            buffer.append({**input_row, **res})
+
+            if len(buffer) >= eff_batch_size:
+                batch_df = pd.DataFrame(buffer)
+                mode = 'a' if header_written else 'w'
+                header = not header_written
+                batch_df.to_csv(output_file, mode=mode, header=header, index=False)
+                header_written = True
+                buffer = []  # Clear memory
+
+        # Write remaining
+        if buffer:
+            batch_df = pd.DataFrame(buffer)
+            mode = 'a' if header_written else 'w'
+            header = not header_written
+            batch_df.to_csv(output_file, mode=mode, header=header, index=False)
+
+    print(f"--- Finished in {(time.time() - start_time):.2f}s ---")
+
+    # --- 5. Return Logic ---
+    # (Same as before: try to load file if it fits in memory, else return path)
     if output_stats:
-        out_stats = {}
+        try:
+            full_df = pd.read_csv(output_file)
+            out_stats = calculate_stats(full_df)
+        except MemoryError:
+            print("Output too large for stats.")
+            full_df = None
+            out_stats = None
+    else:
+        # If user wanted batching, assume they might not want the huge DF back
+        if batch_size and len(cases_list) > 10000:
+            full_df = None
+        else:
+            full_df = pd.read_csv(output_file)
+        out_stats = None
 
-        for output in outputs.columns:
-            out_stats[output] = {}
-            if pd.api.types.is_numeric_dtype(outputs[output]):
-                out_stats[output]["mean"] = outputs[output].mean()
-                out_stats[output]["median"] = outputs[output].median()
-                out_stats[output]["mode"] = outputs[output].mode()[0]
-                out_stats[output]["std"] = outputs[output].std()
-                out_stats[output]["std_frac"] = (
-                    outputs[output].std() / out_stats[output]["mean"]
-                )
-                out_stats[output]["skew"] = outputs[output].skew()
-                out_stats[output]["kurtosis"] = outputs[output].kurtosis()
+    return {"out": full_df, "out_stats": out_stats, "file_path": output_file}
 
-                out_stats[output]["min"] = outputs[output].min()
-                out_stats[output]["max"] = outputs[output].max()
-                out_stats[output]["min_pct_minus"] = (
-                    out_stats[output]["min"] - out_stats[output]["mean"]
-                ) / out_stats[output]["mean"]
-                out_stats[output]["max_pct_plus"] = (
-                    out_stats[output]["max"] - out_stats[output]["mean"]
-                ) / out_stats[output]["mean"]
-            else:
-                if outputs[output].isnull().all():
-                    out_stats[output]["mean"] = np.nan
-                    out_stats[output]["mode"] = np.nan
-                else:
-                    out_stats[output]["mean"] = outputs[output].mode()[0]
-                    out_stats[output]["mode"] = outputs[output].mode()[0]
 
-        # the rows are output, the columns are stats
-        out_stats = pd.DataFrame.from_dict(out_stats, orient="index")
-
-    return {"out": outputs, "out_stats": out_stats}
+def calculate_stats(df):
+    # (Same helper as before)
+    stats_dict = {}
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            desc = df[col].describe()
+            stats_dict[col] = {
+                "mean": desc['mean'], "std": desc['std'],
+                "min": desc['min'], "max": desc['max']
+            }
+    return pd.DataFrame.from_dict(stats_dict, orient='index')
 
 
 def generate_combos(par_space, type="dict"):
@@ -600,6 +615,9 @@ def run_analysis(
         save_results: object = False,
         x_range: object = None,
         y_range: object = None,
+        parallel : bool = False,
+        num_cpus: object = None,
+        batch_size: object = None,
 ) -> object:
     """
     Run various analyses on the model based on the input stack.
@@ -681,9 +699,12 @@ def run_analysis(
             os.path.join(data_folder, "estimate", "outputs.csv"), index=False
         )
 
+    if len(analyses) == 1 and analyses[0] == "estimate":
+        return res_0
+
     if "estimate_unc" in analyses:
         cases = generate_samples(input_stack, n=n_samples, type="unc")
-        res = run_cases(cases, model, output_stats=True)
+        res = run_cases(cases, model, output_stats=True, parallel=parallel, num_cpus=num_cpus, batch_size=batch_size)
 
         if save_results:
             create_dir(os.path.join(data_folder, "estimate_unc"))
@@ -708,7 +729,7 @@ def run_analysis(
 
     if "estimate_unc_extreme_combos" in analyses:
         cases = generate_samples(input_stack, n=n_samples, type="extremes")
-        res = run_cases(cases, model, output_stats=True)
+        res = run_cases(cases, model, output_stats=True, parallel=parallel, num_cpus=num_cpus, batch_size=batch_size)
         if save_results:
             create_dir(os.path.join(data_folder, "estimate_unc_extreme_combos"))
 
@@ -726,7 +747,7 @@ def run_analysis(
             cases = generate_samples(
                 input_stack, n=n_samples, type="unc", par_to_sample=par_i
             )
-            res = run_cases(cases, model, output_stats=True)
+            res = run_cases(cases, model, output_stats=True, parallel=parallel, num_cpus=num_cpus, batch_size=batch_size)
             if save_results:
                 d_ifolder = os.path.join(data_folder, f"sensitivity_analysis_unc_{clean_fld_name(par_i)}")
                 create_dir(d_ifolder)
@@ -758,7 +779,7 @@ def run_analysis(
             cases = generate_samples(
                 input_stack, n=n_samples, type="grid", par_to_sample=par_i
             )
-            res = run_cases(cases, model, output_stats=True)
+            res = run_cases(cases, model, output_stats=True, parallel=parallel, num_cpus=num_cpus, batch_size=batch_size)
             d_ifolder = os.path.join(data_folder, f"sensitivity_analysis_range_{clean_fld_name(par_i)}")
             if save_results:
                 create_dir(d_ifolder)
@@ -788,7 +809,7 @@ def run_analysis(
             input_stack, n=n_samples, type="grid", par_to_sample=par_grid_xy
         )
 
-        res = run_cases(cases, model, output_stats=True)
+        res = run_cases(cases, model, output_stats=True, parallel=parallel, num_cpus=num_cpus, batch_size=batch_size)
         create_dir(os.path.join(data_folder, "sensitivity_analysis_2D"))
         res["out"].to_csv(
             os.path.join(data_folder, "sensitivity_analysis_2D", "outputs.csv"),
@@ -809,7 +830,7 @@ def run_analysis(
 
     if "regular_grid" in analyses:
         cases = generate_samples(input_stack, n=n_samples, type="grid")
-        res = run_cases(cases, model)
+        res = run_cases(cases, model, parallel=parallel, num_cpus=num_cpus, batch_size=batch_size)
         create_dir(os.path.join(data_folder, "regular_grid"))
         res["out"].to_csv(
             os.path.join(data_folder, "regular_grid", "outputs.csv"), index=False
@@ -824,7 +845,7 @@ def run_analysis(
 
     if "random_uniform_grid" in analyses:
         cases = generate_samples(input_stack, n=n_samples, type="uniform")
-        res = run_cases(cases, model)
+        res = run_cases(cases, model, parallel=parallel, num_cpus=num_cpus, batch_size=batch_size)
         create_dir(os.path.join(data_folder, "random_uniform_grid"))
         res["out"].to_csv(
             os.path.join(data_folder, "random_uniform_grid", "outputs.csv"), index=False
@@ -876,6 +897,7 @@ def run_analysis(
         print(indices)
 
     if len(analyses) == 1:
+
         res["out_no_unc"] = res_0["out"]
         return res
 
@@ -907,6 +929,7 @@ def create_model_wrap(model,input_stack, value_key, n_samples=100, lamda_w=1, an
             n_samples=n_samples,
             analyses=[analysis],
             par_output=value_key,
+
         )
 
         res_stats = res["out_stats"]
@@ -956,6 +979,7 @@ if __name__ == "__main__":
         out = {}
         out["y0"] = x["x0"] ** 2 + np.exp(x["x1"]) + x["x3"]
         out["y1"] = x["x0"] + x["x1"] + x["x2"] + x["x3"]
+        time.sleep(.05)
         return out
 
     # Dictionary specifying variables with uncertainties
@@ -1046,7 +1070,7 @@ if __name__ == "__main__":
     # pd.set_option('display.width', None)
 
     # run each analysis
-    # run_analysis(model=model, input_stack=input_stack, analyses=["estimate"],  )
+    run_analysis(model=model, input_stack=input_stack, analyses=["estimate"],  )
     res = run_analysis(
         model,
         input_stack,
@@ -1054,6 +1078,9 @@ if __name__ == "__main__":
         analyses=["estimate_unc"],
         par_output="y0",
         plotting=True,
+        parallel=True,
+        batch_size=None,
+        # num_cpus=1,
     )
 
     print(res)
