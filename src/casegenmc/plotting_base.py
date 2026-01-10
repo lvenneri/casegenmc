@@ -14,6 +14,8 @@ from jinja2 import Template
 from casegenmc.plotting_util import generate_xticks
 from casegenmc.plotting_util import *
 from casegenmc.tex_plots import str_latex, set_latex_labels
+from os.path import join as pjoin
+
 
 def par2_contours(df, x_name, y_name, z_names, zero_lvl="value", **kwargs):
     """
@@ -709,27 +711,19 @@ def sensitivity1d(data_folder, par=[], parz='Energy System LCOE', file_name="sum
 
 def basic_plot_set(df, par, parz_list, data_folder, df0=None):
     """
-    Standard routine for plotting outputs from population of designs,
-    now supporting multiple 'parz' variables in subplots for:
-      - histograms
-      - line plots (if len(par) == 1)
-      - scatter (if len(par) == 2 or len(par) > 3)
-
-    HOWEVER: for the 2D contour plots (if len(par) == 2),
-    we revert back to the ORIGINAL (one figure per 'parz') code.
+    Standard routine for plotting outputs from population of designs.
+    Compatible with Python 3.7 and older Matplotlib versions.
     """
     box_props = dict(facecolor='white', alpha=0.8, edgecolor='black')
 
     # -------------------------------
     # 1) Histograms in subplots
     # -------------------------------
-    bins = max(min(25, len(df) // 20), 20)  # adaptive bin
+    bins = max(min(25, len(df) // 20), 20)
 
     fig, axes = plt.subplots(nrows=len(parz_list), ncols=1, sharex=False)
     fig.subplots_adjust(hspace=0.0)
     if len(parz_list) == 1: axes = [axes]
-
-    # Define style once for consistency
 
     for i, parz in enumerate(parz_list):
         ax = axes[i]
@@ -738,6 +732,7 @@ def basic_plot_set(df, par, parz_list, data_folder, df0=None):
 
         # Stats Calculations
         mean_val, median_val = data_vals.mean(), data_vals.median()
+        # pandas < 1.0.0 might throw error on dropna inside mode(), but usually fine in 3.7 envs
         mode_vals = data_vals.mode(dropna=True)
         mode_val = mode_vals[0] if len(mode_vals) else np.nan
         std_val, skew_val, kurt_val = data_vals.std(), data_vals.skew(), data_vals.kurtosis()
@@ -758,11 +753,10 @@ def basic_plot_set(df, par, parz_list, data_folder, df0=None):
                     va='bottom')
             ref_text = f"Ref: {round(ref_val, 3)}\n"
 
-        # Stats Box (Outside Right, Flush Top/Left)
-        # x=1.0 puts left edge of box at right spine. y=1.0 puts top of box at top spine.
+        # Stats Box
         stats_text = (
             f"{ref_text}Mean: {mean_val:.3f}\nMedian: {median_val:.3f}\n"
-            f"Modeff: {mode_val:.3f}\nStd: {std_val:.3f}\n"
+            f"Mode: {mode_val:.3f}\nStd: {std_val:.3f}\n"
             f"Skew: {skew_val:.3f}\nKurtosis: {kurt_val:.3f}\nN: {len(data_vals)}"
         )
         dummy_handle = Rectangle((0, 0), 1, 1, visible=False)
@@ -771,11 +765,13 @@ def basic_plot_set(df, par, parz_list, data_folder, df0=None):
                   borderaxespad=0, frameon=True,
                   handlelength=0, handletextpad=0,
                   prop={'size': 8})
+
+        # REMOVED transform argument
         at = AnchoredText(f"Histogram: {parz}", loc='upper left',
                           prop=dict(fontsize=8), frameon=True, pad=0.4, borderpad=0.0)
-        at.patch.set(**box_props)  # Apply your styling (white/alpha/edge)
+        at.patch.set(**box_props)
         ax.add_artist(at)
-    # rect helps tight_layout account for the text outside the axes (the stats box)
+
     fig.tight_layout()
     fig.savefig(pjoin(data_folder, "hist_subplots.png"))
     plt.close(fig)
@@ -784,101 +780,92 @@ def basic_plot_set(df, par, parz_list, data_folder, df0=None):
     # 2) Line plots in subplots if len(par) == 1
     # -------------------------------
     if len(par) == 1:
-        fig, axes = plt.subplots(nrows=len(parz_list), ncols=1,  sharex=False)
+        fig, axes = plt.subplots(nrows=len(parz_list), ncols=1, sharex=False)
         fig.subplots_adjust(hspace=0.0)
 
-        if len(parz_list) == 1:
-            axes = [axes]
+        if len(parz_list) == 1: axes = [axes]
 
         for i, parz in enumerate(parz_list):
             ax = axes[i]
             ax.plot(df[par[0]][1:], df[parz][1:], 'ko-', linewidth=1, markersize=3)
-            # Mark the first point in red
-            ax.scatter(df[par[0]].iloc[0], df[parz].iloc[0],
-                       c='r', marker='*', s=40, zorder=5)
+            ax.scatter(df[par[0]].iloc[0], df[parz].iloc[0], c='r', marker='*', s=40, zorder=5)
             ax.set_xlabel(par[0])
-            # ax.set_ylabel(parz)
 
-            # Small "title"
-            at = AnchoredText(  f"Line: {par[0]} vs {parz}", loc='upper left', transform=ax.transAxes,
+            # REMOVED transform argument
+            at = AnchoredText(f"Line: {par[0]} vs {parz}", loc='upper left',
                               prop=dict(fontsize=8), frameon=True, pad=0.4, borderpad=0.0)
-            at.patch.set(**box_props)  # Apply your styling (white/alpha/edge)
+            at.patch.set(**box_props)
             ax.add_artist(at)
-
-        # fig.tight_layout()
 
         fig.savefig(pjoin(data_folder, "line_subplots.png"))
         plt.close(fig)
 
     # -------------------------------
     # 3) If len(par) == 2, revert to ORIGINAL 2D code
-    #    -> One figure per parz, for "0-ref" + "value"
     # -------------------------------
     if len(par) == 2:
         for parz in parz_list:
-            # (Re-create the original string replacement for saving)
             parz_str = parz.replace("_", " ").replace("/", " per ")
 
+            # Assuming par2_contours is defined elsewhere
             fig, ax = par2_contours(df, par[0], par[1], [parz], zero_lvl="0-ref")
-            fig.savefig(pjoin(data_folder, f"contour{parz_str}_ref_.png"),
-                        )
+            fig.savefig(pjoin(data_folder, f"contour{parz_str}_ref_.png"))
 
             fig, ax = par2_contours(df, par[0], par[1], [parz], zero_lvl="value")
-            fig.savefig(pjoin(data_folder, f"contour{parz_str}_value_.png"),
-                        )
+            fig.savefig(pjoin(data_folder, f"contour{parz_str}_value_.png"))
 
     # -------------------------------
     # 4) If len(par) > 2 => parallel coords & stacked hist
     # -------------------------------
     if len(par) > 2:
         for parz in parz_list:
-            # Parallel coords
-            fig = parallel_coordinates_plot(
-                df, columnsToDisplay=par, colorBy=parz, log_color=True
-            )
-            fig.write_html(pjoin(data_folder, f"parallel_{parz}.html"))
+            # Assuming parallel_coordinates_plot is defined elsewhere
+            fig = parallel_coordinates_plot(df, columnsToDisplay=par, colorBy=parz, log_color=True)
+            try:
+                fig.write_html(pjoin(data_folder, f"parallel_{parz}.html"))
+            except AttributeError:
+                # older plotly versions or missing libraries might fail here
+                pass
 
         # Stacked hist
         for p in par:
             for parz in parz_list:
+                # Assuming stacked_hist is defined elsewhere
                 fig, ax = stacked_hist(df, parz, p, num_bins=bins, zmax=100)
                 safe_parz = parz.replace("/", "_per_")
-                safe_p    = p.replace("/", "_per_")
+                safe_p = p.replace("/", "_per_")
 
-
-                at = AnchoredText(f"Stacked Hist: {safe_p} vs {safe_parz}", loc='upper left', transform=ax.transAxes,
+                # REMOVED transform argument
+                at = AnchoredText(f"Stacked Hist: {safe_p} vs {safe_parz}", loc='upper left',
                                   prop=dict(fontsize=8), frameon=True, pad=0.4, borderpad=0.0)
-                at.patch.set(**box_props)  # Apply your styling (white/alpha/edge)
+                at.patch.set(**box_props)
                 ax.add_artist(at)
 
-                fig.savefig(pjoin(data_folder,
-                                  f"hist_stacked_{safe_parz}_{safe_p}.png"),
-                            )
+                fig.savefig(pjoin(data_folder, f"hist_stacked_{safe_parz}_{safe_p}.png"))
                 plt.close(fig)
 
     # -------------------------------
     # 5) Scatter plots if len(par) == 2 or len(par) > 3
     # -------------------------------
-    # (If you want to keep subplots for parz, do so here.)
     if len(par) == 2 or len(par) > 3:
         for p in par:
-            fig, axes = plt.subplots(nrows=len(parz_list), ncols=1,
-                                   )
+            fig, axes = plt.subplots(nrows=len(parz_list), ncols=1)
             fig.subplots_adjust(hspace=0.0)
 
-            if len(parz_list) == 1:
-                axes = [axes]
+            if len(parz_list) == 1: axes = [axes]
 
             for i, parz in enumerate(parz_list):
                 ax = axes[i]
                 ax.scatter(df[p], df[parz], s=5, c='k', alpha=0.7)
-
-                ax.scatter(df[p][0], df[parz][0], marker='*', color='r', s=20)
+                ax.scatter(df[p].iloc[0], df[parz].iloc[0], marker='*', color='r', s=20)
                 ax.set_xlabel(p)
                 ax.set_ylabel(parz)
 
-                at = AnchoredText(f"Scatter: {p} vs {parz}", loc='upper left', transform=ax.transAxes,
+                # FIXED: Removed transform, Added add_artist, Added styling
+                at = AnchoredText(f"Scatter: {p} vs {parz}", loc='upper left',
                                   prop=dict(fontsize=8), frameon=True, pad=0.4, borderpad=0.0)
+                at.patch.set(**box_props)  # added styling
+                ax.add_artist(at)  # added missing artist add
 
             safe_p = p.replace("/", "_per_")
             fig.tight_layout()

@@ -4,16 +4,17 @@ import numpy as np
 import pandas as pd
 from casegenmc.util import timer, clean_fld_name
 from os.path import join as pjoin
-from scipy.stats import uniform, norm, lognorm, sobol_indices
+from scipy.stats import uniform, norm, lognorm
 from tqdm import tqdm
-
-# from scipy.stats import sobol_indices
-
 from casegenmc.plotting_base import *
 import itertools
-import casegenmc.tex_plots as tex_plots 
+import casegenmc.tex_plots as tex_plots
 
-PARALLEL = False
+
+try:
+    from scipy.stats import sobol_indices
+except ImportError:
+    pass
 
 try:
     import ray
@@ -683,6 +684,7 @@ def run_analysis(
             "sensitivity_analysis_2D",
             "regular_grid",
             "random_uniform_grid",
+            # 'sobol_indices'
         ]
         for analysis in analyses:
             if analysis not in valid_analyses:
@@ -891,7 +893,7 @@ def run_analysis(
 
         rng = np.random.default_rng()
 
-        indices = sobol_indices(func=NEORL_model, n=1024, dists=dists, random_state=rng)
+        indices = sobol_indices(func=model, n=1024, dists=dists, random_state=rng)
         boot = indices.bootstrap()
 
         print(indices)
@@ -1128,4 +1130,7 @@ if __name__ == "__main__":
     # run_analysis(model, input_stack, n_samples=1000, analyses=["GA"], par_sensitivity=["x0", "x1"], par_grid_xy=["x0", "x1"], par_output="y0")
     # run_analysis(model, input_stack, n_samples=1000, analyses=["population_rankings"], par_sensitivity=["x0", "x1"], par_grid_xy=["x0", "x1"], par_output="y0")
 
-    # run_analysis(model, input_stack, n_samples=1000, analyses=["sobol_indices"], par_sensitivity=["x0", "x1"], par_grid_xy=["x0", "x1"], par_output="y0")
+    run_analysis(model, input_stack, n_samples=1000, analyses=["sobol_indices"],
+                 par_sensitivity=["x0", "x1"],
+                 par_grid_xy=["x0", "x1"],
+                 par_output="y0")
